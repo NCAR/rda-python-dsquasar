@@ -24,14 +24,14 @@ import sys
 import time
 from os import path as op
 from time import time as tm
-from rda_python_commn import PgLOG
-from rda_python_commn import PgSIG
-from rda_python_commn import PgCMD
-from rda_python_commn import PgUtil
-from rda_python_commn import PgFile
-from rda_python_commn import PgLock
-from rda_python_commn import PgDBI
-from rda_python_commn import PgSplit
+from rda_python_common import PgLOG
+from rda_python_common import PgSIG
+from rda_python_common import PgCMD
+from rda_python_common import PgUtil
+from rda_python_common import PgFile
+from rda_python_common import PgLock
+from rda_python_common import PgDBI
+from rda_python_common import PgSplit
 
 BACKMSG = {
    'B' : "Quasar Backup",
