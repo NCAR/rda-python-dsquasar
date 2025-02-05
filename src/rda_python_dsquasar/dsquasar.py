@@ -1630,7 +1630,7 @@ def process_one_quasar_pathfile(qinfo):
    qmsg = "{}: Try {}, {} file for {}({}) file{} of {}".format(amsg, pfile, bmsg, fcnt, ssize, s, dmsg)
 
    if ccnt > 0:
-      stat = PgSIG.start_child("dsquasar_{}".format(bids[0]), PgLOG.LOGWRN, 1)  # try to start a child process
+      stat = PgSIG.start_child("dsquasar_{}".format(bid), PgLOG.LOGWRN, 1)  # try to start a child process
       if stat <= 0:
          if PgSIG.PGSIG['QUIT']: quit_dsquasar(qinfo)
          sys.exit(1)   # something wrong
