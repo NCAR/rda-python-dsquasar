@@ -5,7 +5,7 @@
 #     Title : dsquasar
 #    Author : Zaihua Ji, zji@ucar.edu
 #      Date : 12/21/2020
-#             2025-02-05 transferred to package rda_python_dsarch from
+#             2025-02-05 transferred to package rda_python_dsquasar from
 #             https://github.com/NCAR/rda-utility-programs.git
 #   Purpose : check Backup flags set in dataset.backflag and/or dsgroup.backflag of RDADB
 #             to gather Web and Saved bfiles, tar them into larger (> 2GB) bfiles, and
