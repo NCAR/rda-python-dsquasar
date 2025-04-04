@@ -1158,7 +1158,7 @@ def get_backup_options(dsid, dcnd):
 
    fopt = 0
    bcnd = "= 0" if PGBACK['chgdays'] < 1 else "> 0"
-   if PgDBI.pgget('sfile', 'sid', "{} AND bid {}".format(dcnd, bcnd), PgLOG.LGWNEX): fopt |= SOPT
+#   if PgDBI.pgget('sfile', 'sid', "{} AND bid {}".format(dcnd, bcnd), PgLOG.LGWNEX): fopt |= SOPT
    if PgSplit.pgget_wfile(dsid, 'wid', "bid " + bcnd, PgLOG.LGWNEX): fopt |= WOPT
 
    return fopt
