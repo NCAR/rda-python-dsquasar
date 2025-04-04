@@ -762,7 +762,6 @@ def process_one_backup_file(qinfo, addback, keepid = False):
 #
 def transfer_quasar_tarfiles(qinfo):
 
-   global ICNT
    ccnt = PgSIG.check_child(None, 0, PgLOG.LOGWRN, -1) if PGBACK['mproc'] > 1 else 0
    if PgSIG.PGSIG['QUIT']: quit_dsquasar(qinfo)
 
