@@ -83,9 +83,10 @@ SOPT = 1
 WOPT = 2
 ORDERS = {}    # cache current order number for each dsid
 BFILES = {}    # cache current order number for each dsid
-BCKSIZE = 64424509440  # 60GB, dsglobus transfer size
-TARSIZE = 3221225472   # 3GB, tarfile size limit
-MINSIZE = PgLOG.PGLOG['ONEGBS']   # minimal tarfile size
+BCKSIZE = 90*PgLOG.PGLOG['ONEGBS']  # 90GB, dsglobus transfer size
+TARSIZE = 5*PgLOG.PGLOG['ONEGBS']   # 5GB, tarfile size limit
+MINSIZE = PgLOG.PGLOG['TWOGBS']     # 2GB, minimal tarfile size
+ONESIZE = 20*PgLOG.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
 TFCOUNT = 100          # if file count is greater, use MINSIZE for tar file
 SUBLMTS = 2000        # file count limit for a sub-group
 
@@ -899,7 +900,9 @@ def process_backup_files(qinfo, dsid, fcnt, recs, filetype):
       if not fd: fd = open_input_file(qinfo, dsid, filetype)
       fd.write(instr)
       qinfo['instr'] += instr
-      if qinfo['fcnt'] < TFCOUNT:
+      if qinfo['fcnt'] == 1:
+         if qinfo['size'] < ONESIZE: continue
+      elif qinfo['fcnt'] < TFCOUNT:
          if qinfo['size'] < TARSIZE: continue
       else:
          if qinfo['size'] < MINSIZE: continue
