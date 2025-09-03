@@ -1176,7 +1176,7 @@ def gather_dataset_files(dsfiles, dsids, unlock = True):
          dcnd = "dsid = '{}'".format(dsid)
          pgrec = PgDBI.pgget("dataset", "dsid, backflag, pid", dcnd, PgLOG.LGWNEX)
          if pgrec:
-            if unlock and pgrec['pid'] and PgLock.lock_dataset(dsid, 0, PgLOG.LGEREX) < 1: continue
+            if unlock and pgrec['pid'] and PgLock.lock_dataset(dsid, 0, LOGACT) < 1: continue
             fcnt += get_dataset_files(dsid, dsfiles, pgrec['backflag'], PgLOG.LOGWRN)
    else:
       dcnd = "ORDER BY dsid"
@@ -1184,7 +1184,7 @@ def gather_dataset_files(dsfiles, dsids, unlock = True):
       dcnt = len(pgrecs['dsid']) if pgrecs else 0
       for i in range(dcnt):
          dsid = pgrecs['dsid'][i]
-         if unlock and pgrecs['pid'][i] and PgLock.lock_dataset(dsid, 0, PgLOG.LGEREX) < 1: continue
+         if unlock and pgrecs['pid'][i] and PgLock.lock_dataset(dsid, 0, LOGACT) < 1: continue
          fcnt += get_dataset_files(dsid, dsfiles, pgrecs['backflag'][i])
 
    if dsfiles:
