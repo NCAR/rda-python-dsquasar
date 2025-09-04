@@ -799,13 +799,13 @@ def transfer_quasar_tarfiles(qinfo):
    dstat = bstat = -1
    if ccnt == 0 or PgSIG.PGSIG['PPID'] > 1:
       if bflg == 'D':
-         dstat = PgFile.quasar_multiple_trasnfer(tofiles, fromfiles, 'rda-quasar-drdata', 'rda-glade', ERRACT)
+         dstat = PgFile.quasar_multiple_trasnfer(tofiles, fromfiles, 'gdex-quasar-drdata', 'gdex-glade', ERRACT)
          if not dstat: PgLOG.pglog("Error Quaser Drdata for " + fmsg, ERRACT|PgLOG.LOGERR)
-      bstat = PgFile.quasar_multiple_trasnfer(tofiles, fromfiles, 'rda-quasar', 'rda-glade', ERRACT)
+      bstat = PgFile.quasar_multiple_trasnfer(tofiles, fromfiles, 'gdex-quasar', 'gdex-glade', ERRACT)
       if not dstat: PgLOG.pglog("Error Quaser Backup for " + fmsg, ERRACT|PgLOG.LOGERR)
       
-      if dstat == PgLOG.FINISH: dstat = PgFile.check_globus_finished(tofiles[0], 'rda-quasar-drdata', ERRACT|PgLOG.NOWAIT)
-      if bstat == PgLOG.FINISH: bstat = PgFile.check_globus_finished(tofiles[0], 'rda-quasar', ERRACT|PgLOG.NOWAIT)
+      if dstat == PgLOG.FINISH: dstat = PgFile.check_globus_finished(tofiles[0], 'gdex-quasar-drdata', ERRACT|PgLOG.NOWAIT)
+      if bstat == PgLOG.FINISH: bstat = PgFile.check_globus_finished(tofiles[0], 'gdex-quasar', ERRACT|PgLOG.NOWAIT)
       if dstat and bstat:
          for fromfile in fromfiles:
             tarfile = PgLOG.PGLOG['DSSDATA'] + fromfile
@@ -1376,12 +1376,12 @@ def get_backup_tarfile(dsfiles, pgrec):
    return ret
 
 #
-# build fromfile name at Globus endpoint rda-glade
+# build fromfile name at Globus endpoint gdex-glade
 #
 def get_local_globus_file(ftype, bid, dsid, bfile, backflag):
    
    endpath = 'decsdata' if ftype == 'S' else 'data'
-   fromfile = "/{}/rda-quasar/{}/{}".format(endpath, dsid, op.basename(bfile))
+   fromfile = "/{}/gdex-quasar/{}/{}".format(endpath, dsid, op.basename(bfile))
    tarfile = PgLOG.PGLOG['DSSDATA'] + fromfile
 
    if PGBACK['action'] == STTACT or PgFile.check_local_file(tarfile, 0, PgLOG.LGEREX): return fromfile
@@ -1646,9 +1646,9 @@ def process_one_quasar_pathfile(qinfo):
    bstat = dstat = -1
    if ccnt == 0 or PgSIG.PGSIG['PPID'] > 1:
       if bflg == 'D':
-         dstat = PgFile.move_backup_file(tofile, fromfile, 'rda-quasar-drdata', logact)
+         dstat = PgFile.move_backup_file(tofile, fromfile, 'gdex-quasar-drdata', logact)
          if not dstat: PgLOG.pglog("Error Quaser Drdata for " + qmsg, PgLOG.LOGERR)
-      bstat = PgFile.move_backup_file(tofile, fromfile, 'rda-quasar', logact)
+      bstat = PgFile.move_backup_file(tofile, fromfile, 'gdex-quasar', logact)
       if not bstat: PgLOG.pglog("Error Quaser Backup for " + qmsg, PgLOG.LOGERR)
    
       if dstat and bstat:
