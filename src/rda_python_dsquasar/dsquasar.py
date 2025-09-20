@@ -345,14 +345,11 @@ def add_checksum_action(bopts, dsids, dstart):
 #
 def create_infile_action(bopts, dsids, dstart):
 
-   if bopts and dstart > 0 and not PgLOG.PGLOG['DSCHECK']:
-      fcnt = gather_dataset_files(None, dsids)
-      dstart = start_dsquasar_none_daemon(bopts, dsids, CINACT, fcnt)
+   if dstart > 0: dstart = start_dsquasar_none_daemon(bopts, dsids, CINACT)
 
    dsfiles = {'B' : {}, 'D' : {}}
    fcnt = gather_dataset_files(dsfiles, dsids)
    if fcnt and dstart:
-      if dstart > 0: dstart = start_dsquasar_none_daemon(bopts, dsids, CINACT, fcnt)
       backup_dataset_files(dsfiles, 'B')
       backup_dataset_files(dsfiles, 'D')
 
@@ -396,25 +393,8 @@ def start_dsquasar_none_daemon(bopts, dsids, act, fcnt = 0):
       dsid = dsids[0] if len(dsids) == 1 else ''
       if not re.match(r'^[a-z]\d{6}$', dsid): dsid = ''
       cact = ('A' if acts < 10 else '') + str(acts)
-      if act == BCKACT:
-         if acts&TARACT: fcnt += 2*gather_dataset_infiles(None, dsids)
-         if acts&CINACT: fcnt += 2*gather_dataset_files(None, dsids)
-      else:
-         if act == TARACT and acts&CINACT: fcnt += gather_dataset_files(None, dsids)
-         if acts&BCKACT: fcnt *= 2
-         if act == STTACT: fcnt = gather_dataset_bckfiles(None, dsids, False)
-
       if act == STTACT or acts&NBACTS != acts:
-         hr = fcnt/400
-         if act&STTACT: hr /= 50
-         if not act&TARACT: hr /= 2
-         hr = int(hr)
-         if hr != 6:
-            mhr = int(PgLOG.PGLOG['PBSTIME']/3600)
-            if hr > mhr: hr = mhr
-            if hr < 2: hr = 2
-            boptions = '-l walltime={}:00:00'.format(hr)
-            PgCMD.set_one_boption('qoptions', boptions, 1)
+         PgCMD.set_one_boption('qoptions', '-l walltime=24:00:00', 1)
       PgCMD.init_dscheck(0, '', "dsquasar", dsid, cact, PGBACK['workdir'],
                          PgLOG.PGLOG['CURUID'], bopts, PgLOG.LOGWRN)
       if PGBACK['mproc'] > 1: PGBACK['mproc'] = 1
@@ -423,7 +403,16 @@ def start_dsquasar_none_daemon(bopts, dsids, act, fcnt = 0):
 
    PgSIG.start_none_daemon('dsquasar', '', PgLOG.PGLOG['CURUID'], PGBACK['mproc'], 60, 1)
 
-   if bopts != None:
+   if PgLOG.PGLOG['DSCHECK']:
+      if act == STTACT:
+         fcnt = gather_dataset_bckfiles(None, dsids, False)
+      elif act == BCKACT:
+         if acts&TARACT: fcnt += 2*gather_dataset_infiles(None, dsids)
+         if acts&CINACT: fcnt += 2*gather_dataset_files(None, dsids)
+      else:
+         if act == CINACT or act == TARACT and acts&CINACT:
+            fcnt += gather_dataset_files(None, dsids)
+         if acts&BCKACT: fcnt *= 2
       PgCMD.set_dscheck_fcount(fcnt, PgLOG.LGEREX)
       PgCMD.set_dscheck_dcount(0, 0, PgLOG.LGEREX)
       mstep = 100 if acts&NBACTS else 10
