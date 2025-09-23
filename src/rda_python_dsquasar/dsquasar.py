@@ -708,7 +708,12 @@ def process_one_backup_file(qinfo, addback, keepid = False):
             if PgSIG.PGSIG['QUIT']: quit_dsquasar(qinfo)
             sys.exit(1)   # something wrong
          elif PgSIG.PGSIG['PPID'] > 1:
-            if PgLOG.pgsystem(cmd, ERRACT):
+            stat = PgLOG.pgsystem(cmd, ERRACT, 325)   # 256 + 64 + 4 + 1
+            if stat:
+               for infile in qinfo['infiles']: PgFile.delete_local_file(infile)
+            elif re.search(r'file backed up to', PgLOG['SYSERR']):
+               if PgDBI.pgdel('bfile', f"bid = {bid}"):
+                  PgLOG.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", DTLACT)
                for infile in qinfo['infiles']: PgFile.delete_local_file(infile)
             sys.exit(0)  # stop child process
          else:
@@ -716,8 +721,12 @@ def process_one_backup_file(qinfo, addback, keepid = False):
             PgLOG.pglog("Started a process for " + qmsg, PgLOG.LOGWRN)
       else:
          PgLOG.pglog(qmsg, PgLOG.LOGWRN)
-         stat = PgLOG.pgsystem(cmd, ERRACT, 69)
+         stat = PgLOG.pgsystem(cmd, ERRACT, 325)   # 256 + 64 + 4 + 1
          if stat:
+            for infile in qinfo['infiles']: PgFile.delete_local_file(infile)
+         elif re.search(r'file backed up to', PgLOG['SYSERR']):
+            if PgDBI.pgdel('bfile', f"bid = {bid}"):
+               PgLOG.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", DTLACT)
             for infile in qinfo['infiles']: PgFile.delete_local_file(infile)
          else:
             PGBACK['errcnt'] += 1
