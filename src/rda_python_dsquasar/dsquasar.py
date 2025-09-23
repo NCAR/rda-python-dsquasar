@@ -10,7 +10,7 @@
 #   Purpose : check Backup flags set in dataset.backflag and/or dsgroup.backflag of RDADB
 #             to gather Web and Saved bfiles, tar them into larger (> 2GB) bfiles, and
 #             back them up onto Quasar Backup Servers, at the Globus end points of
-#             NCAR RDA Quasar and/or NCAR RDA Quasar Drdata, for Backup and/or
+#             NCAR GDEX Quasar and/or NCAR GDEX Quasar Drdata, for Backup and/or
 #             desaster recovery copies, respectively. The file tarring and backing up
 #             processes are completed in utility program dsarch.
 #
@@ -91,7 +91,7 @@ TFCOUNT = 100          # if file count is greater, use MINSIZE for tar file
 SUBLMTS = 2000        # file count limit for a sub-group
 
 PGBACK = {
-   'workdir' : "{}/{}/quasar_backup".format(PgLOG.PGLOG['UPDTWKP'], PgLOG.PGLOG['RDAUSER']),
+   'workdir' : "{}/{}/quasar_backup".format(PgLOG.PGLOG['UPDTWKP'], PgLOG.PGLOG['GDEXUSER']),
    'mproc' : 1,
    'action' : CTACTS,
    'chgdays' : 0,
@@ -266,7 +266,7 @@ def dump_statistics_action(bopts, dsids):
    dump_dataset_files(dsfiles, 'D')
    if PGBACK['chgdays']: return   # no further checking
 
-   # changed RDA files ready to be backed up
+   # changed GDEX files ready to be backed up
    PGBACK['chgdays'] = 1
    dsfiles = {'B' : {}, 'D' : {}}
    gather_dataset_files(dsfiles, dsids, False)
@@ -341,7 +341,7 @@ def add_checksum_action(bopts, dsids, dstart):
       process_dataset_mcsfiles(dsfiles, 'D')
 
 #
-# check available RDA files to create input files
+# check available GDEX files to create input files
 #
 def create_infile_action(bopts, dsids, dstart):
 
@@ -515,7 +515,7 @@ def backup_dataset_files(dsfiles, backflag):
       dcnt = len(qinfo['qdsids'])
       ssize = PgUtil.format_float_value(qinfo['qsize'])
       dmsg = qinfo['qdsids'][0] if dcnt == 1 else "{} datasets".format(dcnt)
-      fmsg = "file{} for {}({}) RDA {}files of {}".format(s, fcnt, ssize, cmsg, dmsg)
+      fmsg = "file{} for {}({}) GDEX {}files of {}".format(s, fcnt, ssize, cmsg, dmsg)
       msg = "{}: {} {} {}".format(amsg, qcnt, bmsg, fmsg)
       PgLOG.pglog(INDENT + msg, LOGACT)
 
@@ -527,7 +527,7 @@ def backup_dataset_files(dsfiles, backflag):
       dsids = qinfo['dsids']
       dcnt = len(dsids)
       dmsg = dsids[0] if dcnt == 1 else "{} datasets".format(dcnt)
-      msg = "{}: {}({}) RDA {}file{} of {} for next {}".format(amsg, fcnt, ssize, cmsg, s, dmsg, bmsg)
+      msg = "{}: {}({}) GDEX {}file{} of {} for next {}".format(amsg, fcnt, ssize, cmsg, s, dmsg, bmsg)
       PgLOG.pglog(INDENT + msg, LOGACT)
 
 #
@@ -584,7 +584,7 @@ def backup_dataset_infiles(dsfiles, backflag):
       dcnt = len(qinfo['qdsids'])
       ssize = PgUtil.format_float_value(qinfo['qsize'])
       dmsg = qinfo['qdsids'][0] if dcnt == 1 else "{} datasets".format(dcnt)
-      fmsg = "file{} for {}({}) RDA files of {}".format(s, fcnt, ssize, dmsg)
+      fmsg = "file{} for {}({}) GDEX files of {}".format(s, fcnt, ssize, dmsg)
       msg = "{}: {} {} {}".format(amsg, qcnt, bmsg, fmsg)
       PgLOG.pglog(INDENT + msg, LOGACT)
 
@@ -629,7 +629,7 @@ def backup_dataset_tarfiles(dsfiles, backflag):
       dcnt = len(qinfo['qdsids'])
       ssize = PgUtil.format_float_value(qinfo['qsize'])
       dmsg = qinfo['qdsids'][0] if dcnt == 1 else "{} datasets".format(dcnt)
-      fmsg = "file{} for {}({}) RDA files of {}".format(s, fcnt, ssize, dmsg)
+      fmsg = "file{} for {}({}) GDEX files of {}".format(s, fcnt, ssize, dmsg)
       msg = "{}: {} {} {}".format(amsg, qcnt, bmsg, fmsg)
       PgLOG.pglog(INDENT + msg, LOGACT)
 
@@ -1189,7 +1189,7 @@ def gather_dataset_files(dsfiles, dsids, unlock = True):
       s = 's' if fcnt > 1 else ''
       bmsg = BACKMSG[PGBACK['backflag']] if PGBACK['backflag'] else 'backup' 
       cmsg = 'Changed ' if PGBACK['chgdays'] else ''
-      PgLOG.pglog("{} RDA {}file{} found ready to {}".format(fcnt, cmsg, s, bmsg), LOGACT)
+      PgLOG.pglog("{} GDEX {}file{} found ready to {}".format(fcnt, cmsg, s, bmsg), LOGACT)
 
    return fcnt
 
@@ -2028,7 +2028,7 @@ def get_backup_mcsfile(dsfiles, pgrec):
 
 
 #
-# dump statistics for RDA files available to create input files
+# dump statistics for GDEX files available to create input files
 #
 def dump_dataset_files(dsfiles, backflag):
 
@@ -2072,7 +2072,7 @@ def dump_dataset_files(dsfiles, backflag):
       PgLOG.pglog(INDENT + msg, LOGACT)
 
 #
-# RDA files included in input files
+# GDEX files included in input files
 #
 def dump_dataset_infiles(dsfiles, backflag):
 
@@ -2095,11 +2095,11 @@ def dump_dataset_infiles(dsfiles, backflag):
    dcnt = len(dsids)
    ssize = PgUtil.format_float_value(size)
    dmsg = dsids[0] if dcnt == 1 else "{} datasets".format(dcnt)
-   msg = "{}({}) Input files for {} RDA files of {} to be tarred for {}".format(bcnt, ssize, fcnt, dmsg, bmsg)
+   msg = "{}({}) Input files for {} GDEX files of {} to be tarred for {}".format(bcnt, ssize, fcnt, dmsg, bmsg)
    PgLOG.pglog(INDENT + msg, LOGACT)
 
 #
-# tarred RDA files to backup
+# tarred GDEX files to backup
 #
 def dump_dataset_tarfiles(dsfiles, backflag):
 
@@ -2120,7 +2120,7 @@ def dump_dataset_tarfiles(dsfiles, backflag):
    ssize = PgUtil.format_float_value(size)
    bmsg = BACKMSG[backflag]
    dmsg = dsids[0] if dcnt == 1 else "{} datasets".format(dcnt)
-   msg = "{} ({}) Tarred files for {} RDA files of {} for {}".format(bcnt, ssize, fcnt, dmsg, bmsg)
+   msg = "{} ({}) Tarred files for {} GDEX files of {} for {}".format(bcnt, ssize, fcnt, dmsg, bmsg)
    PgLOG.pglog(INDENT + msg, LOGACT)
 
 #
@@ -2153,7 +2153,7 @@ def dump_dataset_bckfiles(dsfiles, backflag):
    ssize = PgUtil.format_float_value(qinfo['size'])
    bmsg = BACKMSG[backflag]
    dmsg = qinfo['dsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
-   msg = "{} ({}) {} files for {} RDA files of {}".format(bcnt, ssize, bmsg, qinfo['fcnt'], dmsg)
+   msg = "{} ({}) {} files for {} GDEX files of {}".format(bcnt, ssize, bmsg, qinfo['fcnt'], dmsg)
    PgLOG.pglog(INDENT + msg, LOGACT)
 
    indent = INDENT + INDENT
@@ -2163,7 +2163,7 @@ def dump_dataset_bckfiles(dsfiles, backflag):
       msg = "{} {} files Missing Note fields of {}".format(bcnt, bmsg, dmsg)
       PgLOG.pglog(indent + msg, LOGACT)
 
-   msg = "{} RDA files Changed after {}".format(pcnt, bmsg)
+   msg = "{} GDEX files Changed after {}".format(pcnt, bmsg)
    PgLOG.pglog(indent + msg, LOGACT)
    if pcnt == 0: return
 
@@ -2171,28 +2171,28 @@ def dump_dataset_bckfiles(dsfiles, backflag):
       dscnt = len(qinfo['cdsids'])
       dmsg = qinfo['cdsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
       ssize = PgUtil.format_float_value(qinfo['csize'])
-      msg = "{} ({}) RDA file sizes Changed for {}".format(qinfo['ccnt'], ssize, dmsg)
+      msg = "{} ({}) GDEX file sizes Changed for {}".format(qinfo['ccnt'], ssize, dmsg)
       PgLOG.pglog(indent + msg, LOGACT)
 
    if qinfo['ucnt'] > 0:
       dscnt = len(qinfo['udsids'])
       dmsg = qinfo['udsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
       ssize = PgUtil.format_float_value(qinfo['usize'])
-      msg = "{} ({}) RDA files Updated & Re-done {} for {}".format(qinfo['ucnt'], ssize, bmsg, dmsg)
+      msg = "{} ({}) GDEX files Updated & Re-done {} for {}".format(qinfo['ucnt'], ssize, bmsg, dmsg)
       PgLOG.pglog(indent + msg, LOGACT)
    
    if qinfo['dcnt'] > 0:
       dscnt = len(qinfo['ddsids'])
       dmsg = qinfo['ddsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
       ssize = PgUtil.format_float_value(qinfo['dsize'])
-      msg = "{} ({}) RDA files Got Deleted for {}".format(qinfo['dcnt'], ssize, dmsg)
+      msg = "{} ({}) GDEX files Got Deleted for {}".format(qinfo['dcnt'], ssize, dmsg)
       PgLOG.pglog(indent + msg, LOGACT)
 
    if qinfo['mcnt'] > 0:
       dscnt = len(qinfo['mdsids'])
       dmsg = qinfo['mdsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
       ssize = PgUtil.format_float_value(qinfo['msize'])
-      msg = "{} ({}) RDA files Moved for {}".format(qinfo['mcnt'], ssize, dmsg)
+      msg = "{} ({}) GDEX files Moved for {}".format(qinfo['mcnt'], ssize, dmsg)
       PgLOG.pglog(indent + msg, LOGACT)
 
 #
