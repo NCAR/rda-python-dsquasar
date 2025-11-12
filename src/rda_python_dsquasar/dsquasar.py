@@ -91,7 +91,7 @@ TFCOUNT = 100          # if file count is greater, use MINSIZE for tar file
 SUBLMTS = 2000        # file count limit for a sub-group
 
 PGBACK = {
-   'workdir' : "{}/{}/quasar_backup".format(PgLOG.PGLOG['UPDTWKP'], PgLOG.PGLOG['GDEXUSER']),
+   'workdir' : "{}/{}/quasar_backup".format(PgLOG.PGLOG['GDEXWORK'], PgLOG.PGLOG['GDEXUSER']),
    'mproc' : 1,
    'action' : CTACTS,
    'chgdays' : 0,
@@ -1092,7 +1092,7 @@ def evaluate_file_stat(dsid, cate, pgrec):
    chome = PgLOG.PGLOG['DECSHOME'] if cate == 's' else PgLOG.PGLOG['DSDHOME']
 
    if pgrec['locflag'] == 'O':
-      bucket = 'rda-decsdata' if cate == 's' else 'rda-data'
+      bucket = 'gdex-decsdata' if cate == 's' else PgLOG.PGLOC['OBJCTBKT']
       ofile = PgLOG.join_paths(dsid, fname)
       info = PgFile.check_object_file(ofile, bucket, 1, ERRACT)
       if not info: return False
