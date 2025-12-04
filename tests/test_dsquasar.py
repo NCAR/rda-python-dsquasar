@@ -3,5 +3,5 @@
 import pytest
 
 def test_dsquasar():
-   from . import dsquasar
-   from .ds_quasar import DsQuasar
+   import rda_python_dsquasar.dsquasar
+   import rda_python_dsquasar.ds_quasar
