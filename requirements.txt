@@ -1,2 +1,7 @@
+psycopg2-binary==2.9.10
+pytest
+rda-python-globus
+unidecode
+hvac
 rda_python_common
 rda_python_dsarch
