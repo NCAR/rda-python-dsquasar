@@ -598,7 +598,7 @@ class DsQuasar(PgCMD, PgSplit):
                stat = self.pgsystem(cmd, self.ERRACT, 325)   # 256 + 64 + 4 + 1
                if stat:
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
-               elif re.search(r'file backed up to', self.PPLOG['SYSERR']):
+               elif re.search(r'file backed up to', self.PGLOG['SYSERR']):
                   if self.pgdel('bfile', f"bid = {bid}"):
                      self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", self.DTLACT)
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
@@ -1796,7 +1796,7 @@ class DsQuasar(PgCMD, PgSplit):
       size = cnt = pcnt = 0
       for bid in bfiles:
          binfo = bfiles[bid]
-         pcnt += count_changed_files(bid, binfo, qinfo)
+         pcnt += self.count_changed_files(bid, binfo, qinfo)
          if self.PGBACK['pstep']:
             cnt += 1
             size += binfo['size']
