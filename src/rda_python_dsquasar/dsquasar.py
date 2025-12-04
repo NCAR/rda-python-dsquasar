@@ -711,7 +711,7 @@ def process_one_backup_file(qinfo, addback, keepid = False):
             stat = PgLOG.pgsystem(cmd, ERRACT, 325)   # 256 + 64 + 4 + 1
             if stat:
                for infile in qinfo['infiles']: PgFile.delete_local_file(infile)
-            elif re.search(r'file backed up to', PgLOG['SYSERR']):
+            elif re.search(r'file backed up to', PgLOG.PGLOG['SYSERR']):
                if PgDBI.pgdel('bfile', f"bid = {bid}"):
                   PgLOG.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", DTLACT)
                for infile in qinfo['infiles']: PgFile.delete_local_file(infile)

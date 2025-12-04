@@ -349,11 +349,11 @@ class DsQuasar(PgCMD, PgSplit):
          if act == self.STTACT:
             fcnt = self.gather_dataset_bckfiles(None, False)
          elif act == self.BCKACT:
-            if acts&self.TARACT: fcnt += 2*gather_dataset_infiles(None)
-            if acts&self.CINACT: fcnt += 2*gather_dataset_files(None)
+            if acts&self.TARACT: fcnt += 2*self.gather_dataset_infiles(None)
+            if acts&self.CINACT: fcnt += 2*self.gather_dataset_files(None)
          else:
             if act == self.CINACT or act == self.TARACT and acts&self.CINACT:
-               fcnt += gather_dataset_files(None)
+               fcnt += self.gather_dataset_files(None)
             if acts&self.BCKACT: fcnt *= 2
          self.set_dscheck_fcount(fcnt, self.LGEREX)
          self.set_dscheck_dcount(0, 0, self.LGEREX)
@@ -592,13 +592,13 @@ class DsQuasar(PgCMD, PgSplit):
          if ccnt > 0:
             stat = self.start_child("dsquasar_{}".format(bid), self.LOGWRN, 1)  # try to start a child process
             if stat <= 0:
-               if self.PGSIG['QUIT']: quit_dsquasar(qinfo)
+               if self.PGSIG['QUIT']: self.quit_dsquasar(qinfo)
                sys.exit(1)   # something wrong
             elif self.PGSIG['PPID'] > 1:
                stat = self.pgsystem(cmd, self.ERRACT, 325)   # 256 + 64 + 4 + 1
                if stat:
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
-               elif re.search(r'file backed up to', PgLOG['SYSERR']):
+               elif re.search(r'file backed up to', self.PPLOG['SYSERR']):
                   if self.pgdel('bfile', f"bid = {bid}"):
                      self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", self.DTLACT)
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
