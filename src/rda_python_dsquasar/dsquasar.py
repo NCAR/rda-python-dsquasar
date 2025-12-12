@@ -928,7 +928,7 @@ class DsQuasar(PgCMD, PgSplit):
          self.object_copy_local(lfile, ofile, bucket, self.ERRACT)
          cinfo = self.check_local_file(lfile, 32, self.ERRACT)
          if not cinfo: return False
-         info['checksum'] = cinfo['checksum']
+         if 'checksum' in cinfo: info['checksum'] = cinfo['checksum']
          lname = 'OBS'
       else:
          lfile = "{}/{}/".format(chome, dsid)
@@ -939,14 +939,16 @@ class DsQuasar(PgCMD, PgSplit):
          lname = 'DSK'
       record = {}      
       msg = ''
-      checksum = info['checksum']
-      if not pgrec['checksum']:
-         msg = "Checksum misses"
-         record['checksum'] = checksum
-         pgrec['checksum'] = ''
-      elif checksum != pgrec['checksum']:
-         msg = "Checksum mismatch"
-         record['checksum'] = checksum
+      checksum = None
+      if 'checksum' in info:
+         checksum = info['checksum']
+         if not pgrec['checksum']:
+            msg = "Checksum misses"
+            record['checksum'] = checksum
+            pgrec['checksum'] = ''
+         elif checksum != pgrec['checksum']:
+            msg = "Checksum mismatch"
+            record['checksum'] = checksum
       if info['data_size'] != pgrec['data_size']:
          if msg: msg += ", "
          msg += "Size mismatch"
@@ -960,9 +962,11 @@ class DsQuasar(PgCMD, PgSplit):
       if msg:
          msg = "{}-{}-{}: {}".format(dsid, cate.upper(), fname, msg)
          msg += "\n{}:".format(lname)
-         msg += "{}/{}/{}/{}".format(checksum, info['data_size'], info['date_modified'], info['time_modified'])
+         if checksum: msg += "{}/".format(checksum)
+         msg += "{}/{}/{}".format(info['data_size'], info['date_modified'], info['time_modified'])
          msg += "\nDBS:"
-         msg += "{}/{}/{}/{}".format(pgrec['checksum'], pgrec['data_size'], pgrec['date_modified'], pgrec['time_modified'])
+         if checksum: msg += "{}/".format(pgrec['checksum'])
+         msg += "{}/{}/{}".format(pgrec['data_size'], pgrec['date_modified'], pgrec['time_modified'])
          self.pglog(msg, self.LOGACT)
          cid = cate + 'id'
          fcnd = "{} = {}".format(cid, pgrec[cid])
