@@ -56,7 +56,7 @@ def get_tar_summary_and_details(tar_path):
     }
 
 def insert_tfile_row(summary, checksum, db_params, extra, update_on_conflict=False):
-    table_name = 'tfile'
+    table_name = 'dssdb.tfile'
     conn = psycopg2.connect(**db_params)
     cur = conn.cursor()
     columns = [
@@ -99,21 +99,21 @@ def get_uid_from_logname(db_params):
     conn = psycopg2.connect(**db_params)
     cur = conn.cursor()
     # Ensure logname is quoted as a string in the query
-    cur.execute("SELECT userno FROM dssgrp WHERE logname='%s' LIMIT 1", (str(logname),))
+    cur.execute("SELECT userno FROM dssdb.dssgrp WHERE logname=%s LIMIT 1", (str(logname),))
     row = cur.fetchone()
     cur.close()
     conn.close()
     if row:
         return row[0]
     else:
-        raise ValueError(f"User logname '{logname}' not found in dssgrp table.")
+        raise ValueError(f"User logname '{logname}' not found in dssdb.dssgrp table.")
 
 def main():
     parser = argparse.ArgumentParser(description='Insert tar file summary into tfile table.')
     parser.add_argument('tarfile', help='Path to the tar file')
     parser.add_argument('--db-host', default='rda-db.ucar.edu', help='Database host (default: rda-db.ucar.edu)')
     parser.add_argument('--db-port', default=5432, type=int, help='Database port (default: 5432)')
-    parser.add_argument('--db-name', default='dssdb', help='Database name (default: dssdb)')
+    parser.add_argument('--db-name', default='rdadb', help='Database name (default: rdadb)')
     parser.add_argument('--db-user', default='dssdb', help='Database user (default: dssdb)')
     parser.add_argument('--db-password', help='Database password (optional, use .pgpass if omitted)')
     parser.add_argument('--update', action='store_true', help='Update row if tfile already exists')
