@@ -707,11 +707,11 @@ class DsTACC(PgCMD, PgSplit):
          ntid = self.pgadd('tfile', record, self.LOGERR|self.AUTOID)
          if not ntid:
             tid = self.current_tid()
-            tfile = "{}/{}_sn{}_dn{}_fn{}{}.tar".format(subpath, dsid, tid, dcnt, fcnt, cmsg)
+            tfile = "{}_sn{}_dn{}_fn{}{}.tar".format(dsid, tid, dcnt, fcnt, cmsg)
             record['tfile'] = tfile
          elif ntid != tid:
             tid = ntid
-            tfile = "{}/{}_sn{}_dn{}_fn{}{}.tar".format(subpath, dsid, tid, dcnt, fcnt, cmsg)
+            tfile = "{}_sn{}_dn{}_fn{}{}.tar".format(dsid, tid, dcnt, fcnt, cmsg)
             self.pgexec("UPDATE tfile SET tfile = '{}' WHERE tid = {}".format(tfile, tid), self.LGEREX)
       return (tid, tfile)
 
@@ -769,7 +769,7 @@ class DsTACC(PgCMD, PgSplit):
          return 0
       infiles = self.cache_dataset_infiles(dsid)
       tfiles = None
-      tfiles = dsfiles if dsfile is None else self.init_backup_dict()
+      tfiles = dsfiles if dsfiles is None else self.init_backup_dict()
       cnts = [0, 0]  # [cnt, size]
       if self.PGBACK['chgdays'] > 0:
          self.get_dataset_changed_files(dsid, dcnd, tfiles, fopt, infiles, cnts)
