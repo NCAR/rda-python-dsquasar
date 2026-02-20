@@ -33,7 +33,7 @@ class DsTACC(PgCMD, PgSplit):
    CINACT = 1   # create dsarch input Save/Web file lists and add backup file records
    TARACT = 2   # build tarfiles (>=self.TARSIZE each tarfile) from the Saved/Web files in input files
    CTACTS = 3   # 1|2
-   BCKACT = 4   # transfer multiple tarfiles (>=self.BCKSIZE each transfer) to TACC backup/drdata 
+   BCKACT = 4   # transfer multiple tarfiles (>=self.BCKSIZE each transfer) to TACC backup 
    TBACTS = 6   # 2|4
    CBACTS = 7   # 1|2|4
    CHKACT = 8   # check file sizes between db and tacc, and set status to N if different
@@ -665,7 +665,6 @@ class DsTACC(PgCMD, PgSplit):
       if ccnt == 0 or self.PGSIG['PPID'] > 1:
          bstat = self.tacc_multiple_trasnfer(tofiles, fromfiles, 'gdex-tacc', 'gdex-glade', self.ERRACT)
          if not dstat: self.pglog("Error Quaser Backup for " + fmsg, self.ERRACT|self.LOGERR)
-         if dstat == self.FINISH: dstat = self.check_globus_finished(tofiles[0], 'gdex-tacc-drdata', self.ERRACT|self.NOWAIT)
          if bstat == self.FINISH: bstat = self.check_globus_finished(tofiles[0], 'gdex-tacc', self.ERRACT|self.NOWAIT)
          if dstat and bstat:
             for fromfile in fromfiles:
@@ -1331,9 +1330,6 @@ class DsTACC(PgCMD, PgSplit):
       logact = self.OVRIDE|self.LOGWRN
       bstat = dstat = -1
       if ccnt == 0 or self.PGSIG['PPID'] > 1:
-         if bflg == 'D':
-            dstat = self.move_backup_file(tofile, fromfile, 'gdex-tacc-drdata', logact)
-            if not dstat: self.pglog("Error Quaser Drdata for " + qmsg, self.LOGERR)
          bstat = self.move_backup_file(tofile, fromfile, 'gdex-tacc', logact)
          if not bstat: self.pglog("Error Quaser Backup for " + qmsg, self.LOGERR)
          if dstat and bstat:

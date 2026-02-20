@@ -32,4 +32,5 @@ pythonpath = [
 
 [project.scripts]
 dsquasar = "rda_python_dsquasar.dsquasar:main"
-dsquasar = "rda_python_dsquasar.dstacc:main"
+tacctar = "rda_python_dsquasar.tacctar:main"
+taccrec = "rda_python_dsquasar.taccrec:main"
