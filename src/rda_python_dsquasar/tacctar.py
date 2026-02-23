@@ -68,25 +68,33 @@ def group_files_by_size(files, min_size, max_size):
         batches.append(current_batch)
     return batches
 
-def tar_batches(dirpath, batches, output_dir):
-    src_dir_name = Path(dirpath).name
+def tar_batches(dirpath, batches, output_dir, root_path=None, root_dirname=None):
+    # Use root_dirname for tar file naming and arcname
     for idx, batch in enumerate(batches, 1):
-        tar_name = os.path.join(output_dir, f"{src_dir_name}_part{idx}.tar")
-        logging.info(f"Creating tar: {tar_name} with {len(batch)} files.")
+        num_files = len(batch)
+        tar_name = os.path.join(output_dir, f"{root_dirname}_part{idx}_{num_files}files.tar")
+        logging.info(f"Creating tar: {tar_name} with {num_files} files.")
         with tarfile.open(tar_name, "w") as tar:
             for f in batch:
                 try:
-                    tar.add(f, arcname=os.path.relpath(f, dirpath))
+                    # arcname should be relative to root_path, and always start with root_dirname
+                    arcname = os.path.relpath(f, root_path)
+                    arcname = os.path.join(root_dirname, arcname)
+                    tar.add(f, arcname=arcname)
                 except Exception as e:
                     logging.warning(f"Failed to add {f} to tar: {e}")
 
-def process_directory_tree(root_dir, output_dir):
-    for dirpath, dirnames, filenames in os.walk(root_dir):
+def process_directory_tree(root_path, output_dir):
+    root_dirname = os.path.basename(os.path.abspath(root_path))
+    # Gather all files under root_path first
+    all_files = []
+    for dirpath, dirnames, filenames in os.walk(root_path):
         abs_files = [os.path.join(dirpath, f) for f in filenames]
-        if not abs_files:
-            continue
-        batches = group_files_by_size(abs_files, ONE_TB, THREE_TB)
-        tar_batches(dirpath, batches, output_dir)
+        all_files.extend(abs_files)
+    if not all_files:
+        return
+    batches = group_files_by_size(all_files, ONE_TB, THREE_TB)
+    tar_batches(root_path, batches, output_dir, root_path=root_path, root_dirname=root_dirname)
 
 def read_directories_from_file(input_file):
     dirs = []
