@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import tarfile
 import argparse
@@ -93,12 +94,12 @@ def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member
     try:
         cur.execute(sql, values)
         conn.commit()
-        # Retrieve tidx for the just-inserted tfile row
-        cur.execute(f"SELECT tidx FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
+        # Retrieve tid for the just-inserted tfile row
+        cur.execute(f"SELECT tid FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
         row = cur.fetchone()
-        tidx = row[0] if row else None
+        tid = row[0] if row else None
         # Update wfile tables if member_details provided
-        if member_details and tidx is not None:
+        if member_details and tid is not None:
             for m in member_details:
                 name = m['name']
                 if '/' in name:
@@ -111,8 +112,8 @@ def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member
                 exists = cur.fetchone()[0]
                 if not exists:
                     continue
-                # Update tidx if record exists
-                cur.execute(f"UPDATE {wfile_table} SET tidx=%s WHERE wfile=%s", (tidx, wfile))
+                # Update tid if record exists
+                cur.execute(f"UPDATE {wfile_table} SET tid=%s WHERE wfile=%s", (tid, wfile))
         conn.commit()
     except Exception as e:
         print(f"Database error: {e}")
@@ -144,6 +145,7 @@ def get_uid_from_logname(db_params):
 def main():
     parser = argparse.ArgumentParser(description='Insert tar file summary into tfile table.')
     parser.add_argument('--member-list', help='Path to tar member list file (from tar -tvf)')
+    parser.add_argument('--member-list-file', help='File containing list of tar member list files (one per line)')
     parser.add_argument('--db-host', default='rda-db.ucar.edu', help='Database host (default: rda-db.ucar.edu)')
     parser.add_argument('--db-port', default=5432, type=int, help='Database port (default: 5432)')
     parser.add_argument('--db-name', default='rdadb', help='Database name (default: rdadb)')
@@ -151,6 +153,55 @@ def main():
     parser.add_argument('--db-password', help='Database password (optional, use .pgpass if omitted)')
     parser.add_argument('--no-update', action='store_true', help='If tfile exists, skip all updates including wfile tables (default: False)')
     args = parser.parse_args()
+    if args.member_list_file:
+        with open(args.member_list_file, 'r') as f:
+            for line in f:
+                member_list_path = line.strip()
+                if not member_list_path or not os.path.isfile(member_list_path):
+                    print(f"Error: member list file '{member_list_path}' is invalid or does not exist.")
+                    continue
+                summary, member_details = get_tar_summary_and_details(member_list_path)
+                if summary is None:
+                    continue
+                db_params = {
+                    'host': args.db_host,
+                    'port': args.db_port,
+                    'dbname': args.db_name,
+                    'user': args.db_user
+                }
+                if args.db_password:
+                    db_params['password'] = args.db_password
+                # Check if tfile exists if --no-update is set
+                if args.no_update:
+                    try:
+                        conn = psycopg2.connect(**db_params)
+                        cur = conn.cursor()
+                        cur.execute("SELECT 1 FROM dssdb.tfile WHERE tfile=%s LIMIT 1", (summary['tfile'],))
+                        exists = cur.fetchone()
+                        cur.close()
+                        conn.close()
+                        if exists:
+                            print(f"tfile '{summary['tfile']}' already exists in dssdb.tfile. Skipping all updates.")
+                            continue
+                    except Exception as e:
+                        print(f"Database error during tfile existence check: {e}")
+                        continue
+                try:
+                    uid = get_uid_from_logname(db_params)
+                except Exception as e:
+                    print(f"Error getting uid from dssgrp: {e}")
+                    continue
+                extra = {
+                    'uid': uid,
+                    'dsid': summary['dsid'],
+                    'data_format': '',
+                    'disp_order': 0,
+                    'dsids': summary['dsids'],
+                    'note': summary['note']
+                }
+                insert_tfile_row(summary, db_params, extra, update_on_conflict=True, member_details=member_details if not args.no_update else None)
+                print(f"Inserted tar summary for {summary['tfile']} into tfile.")
+        return
     if not args.member_list or not os.path.isfile(args.member_list):
         print('Error: --member-list argument is required and must point to a valid file.')
         return
