@@ -5,45 +5,57 @@ import psycopg2
 import hashlib
 from datetime import datetime
 
-def compute_md5(file_path, chunk_size=8192):
-    md5 = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            md5.update(chunk)
-    return md5.hexdigest()
-
-def get_tar_summary_and_details(tar_path):
-    with tarfile.open(tar_path, 'r') as tar:
-        member_files = [m for m in tar.getmembers() if m.isfile()]
-        file_count = len(member_files)
-        # Collect details for note
-        details = []
-        root_dirs = set()
-        dsid = None
-        for idx, m in enumerate(member_files):
-            # Extract root directory (first part of the path)
-            parts = m.name.split('/')
-            if len(parts) > 1:
-                root_dirs.add(parts[0])
+def get_tar_summary_and_details(member_list_path):
+    details = []
+    member_details = []
+    root_dirs = set()
+    dsid = None
+    file_count = 0
+    tar_size = 0
+    if member_list_path and os.path.isfile(member_list_path):
+        with open(member_list_path, 'r') as f:
+            for idx, line in enumerate(f):
+                line = line.strip()
+                if not line or line.startswith('-rw') is False:
+                    continue
+                parts = line.split()
+                if len(parts) < 6:
+                    continue
+                perms = parts[0]
+                owner = parts[1]
+                size = int(parts[2])
+                date = parts[3]
+                time = parts[4]
+                name = ' '.join(parts[5:])
+                # Ignore member directory names ending with '/'
+                if name.endswith('/'):
+                    continue
+                tar_size += size
+                mtime_str = f"{date} {time}"
+                try:
+                    mtime = int(datetime.strptime(mtime_str, "%Y-%m-%d %H:%M").timestamp())
+                except Exception:
+                    mtime = 0
+                file_count += 1
+                root = name.split('/')[0] if '/' in name else name
+                root_dirs.add(root)
                 if idx == 0:
-                    dsid = parts[0]
-            elif len(parts) == 1:
-                root_dirs.add(parts[0])
-                if idx == 0:
-                    dsid = parts[0]
-            # Collect file details
-            details.append(f"name={m.name};size={m.size};mtime={m.mtime};type={m.type};mode={m.mode};uid={m.uid};gid={m.gid};uname={m.uname};gname={m.gname}")
-        note = '\n'.join(details)
-        dsids = ','.join(sorted(root_dirs))
-    tar_stat = os.stat(tar_path)
-    tar_size = tar_stat.st_size
-    ctime = datetime.fromtimestamp(tar_stat.st_ctime)
-    mtime = datetime.fromtimestamp(tar_stat.st_mtime)
+                    dsid = root
+                details.append(f"name={name};size={size};mtime={mtime};type=0;mode=0;uid=0;gid=0;uname=;gname=")
+                member_details.append({'name': name})
+    else:
+        print('Error: member_list_path is required and must point to a valid file.')
+        return None, None
+    from datetime import datetime
+    now = datetime.now()
+    note = '\n'.join([m['name'] for m in member_details])
+    dsids = ','.join(sorted(root_dirs))
+    # Use member_list_path to infer tar file name
+    tar_file_name = os.path.basename(member_list_path).replace('.mbr', '')
+    ctime = now
+    mtime = now
     return {
-        'tfile': os.path.basename(tar_path),
+        'tfile': tar_file_name,
         'data_size': tar_size,
         'wcount': file_count,
         'date_created': ctime.date(),
@@ -53,22 +65,22 @@ def get_tar_summary_and_details(tar_path):
         'note': note,
         'dsids': dsids,
         'dsid': dsid
-    }
+    }, member_details
 
-def insert_tfile_row(summary, checksum, db_params, extra, update_on_conflict=False):
+def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member_details=None):
     table_name = 'dssdb.tfile'
     conn = psycopg2.connect(**db_params)
     cur = conn.cursor()
     columns = [
         'tfile', 'data_size', 'wcount', 'date_created', 'time_created',
-        'date_modified', 'time_modified', 'file_format', 'checksum', 'status',
+        'date_modified', 'time_modified', 'file_format', 'status',
         'uid', 'dsid', 'data_format', 'disp_order', 'dsids', 'note'
     ]
     values = [
         summary['tfile'], summary['data_size'], summary['wcount'],
         summary['date_created'], summary['time_created'],
         summary['date_modified'], summary['time_modified'],
-        'tar', checksum, 'T',
+        'tar', 'T',
         extra.get('uid'), extra.get('dsid'), extra.get('data_format'),
         extra.get('disp_order'), extra.get('dsids'), extra.get('note')
     ]
@@ -80,6 +92,27 @@ def insert_tfile_row(summary, checksum, db_params, extra, update_on_conflict=Fal
         sql += f" ON CONFLICT (tfile) DO UPDATE SET {set_clause}"
     try:
         cur.execute(sql, values)
+        conn.commit()
+        # Retrieve tidx for the just-inserted tfile row
+        cur.execute(f"SELECT tidx FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
+        row = cur.fetchone()
+        tidx = row[0] if row else None
+        # Update wfile tables if member_details provided
+        if member_details and tidx is not None:
+            for m in member_details:
+                name = m['name']
+                if '/' in name:
+                    cdsid, wfile = name.split('/', 1)
+                else:
+                    cdsid, wfile = name, ''
+                wfile_table = f"dssdb.wfile_{cdsid}"
+                # Check if table exists
+                cur.execute("SELECT to_regclass(%s)", (wfile_table,))
+                exists = cur.fetchone()[0]
+                if not exists:
+                    continue
+                # Update tidx if record exists
+                cur.execute(f"UPDATE {wfile_table} SET tidx=%s WHERE wfile=%s", (tidx, wfile))
         conn.commit()
     except Exception as e:
         print(f"Database error: {e}")
@@ -110,20 +143,20 @@ def get_uid_from_logname(db_params):
 
 def main():
     parser = argparse.ArgumentParser(description='Insert tar file summary into tfile table.')
-    parser.add_argument('tarfile', help='Path to the tar file')
+    parser.add_argument('--member-list', help='Path to tar member list file (from tar -tvf)')
     parser.add_argument('--db-host', default='rda-db.ucar.edu', help='Database host (default: rda-db.ucar.edu)')
     parser.add_argument('--db-port', default=5432, type=int, help='Database port (default: 5432)')
     parser.add_argument('--db-name', default='rdadb', help='Database name (default: rdadb)')
     parser.add_argument('--db-user', default='dssdb', help='Database user (default: dssdb)')
     parser.add_argument('--db-password', help='Database password (optional, use .pgpass if omitted)')
-    parser.add_argument('--update', action='store_true', help='Update row if tfile already exists')
+    parser.add_argument('--no-update', action='store_true', help='If tfile exists, skip all updates including wfile tables (default: False)')
     args = parser.parse_args()
-    tar_path = args.tarfile
-    if not os.path.isfile(tar_path):
-        print(f"Tar file not found: {tar_path}")
+    if not args.member_list or not os.path.isfile(args.member_list):
+        print('Error: --member-list argument is required and must point to a valid file.')
         return
-    summary = get_tar_summary_and_details(tar_path)
-    checksum = compute_md5(tar_path)
+    summary, member_details = get_tar_summary_and_details(args.member_list)
+    if summary is None:
+        return
     db_params = {
         'host': args.db_host,
         'port': args.db_port,
@@ -132,6 +165,21 @@ def main():
     }
     if args.db_password:
         db_params['password'] = args.db_password
+    # Check if tfile exists if --no-update is set
+    if args.no_update:
+        try:
+            conn = psycopg2.connect(**db_params)
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM dssdb.tfile WHERE tfile=%s LIMIT 1", (summary['tfile'],))
+            exists = cur.fetchone()
+            cur.close()
+            conn.close()
+            if exists:
+                print(f"tfile '{summary['tfile']}' already exists in dssdb.tfile. Skipping all updates.")
+                return
+        except Exception as e:
+            print(f"Database error during tfile existence check: {e}")
+            return
     try:
         uid = get_uid_from_logname(db_params)
     except Exception as e:
@@ -145,8 +193,8 @@ def main():
         'dsids': summary['dsids'],
         'note': summary['note']
     }
-    insert_tfile_row(summary, checksum, db_params, extra, update_on_conflict=args.update)
-    print(f"Inserted tar summary for {tar_path} into tfile.")
+    insert_tfile_row(summary, db_params, extra, update_on_conflict=True, member_details=member_details if not args.no_update else None)
+    print(f"Inserted tar summary for {summary['tfile']} into tfile.")
 
 if __name__ == '__main__':
     main()
