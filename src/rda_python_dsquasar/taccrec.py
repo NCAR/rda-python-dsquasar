@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import tarfile
 import argparse
@@ -93,12 +94,12 @@ def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member
     try:
         cur.execute(sql, values)
         conn.commit()
-        # Retrieve tidx for the just-inserted tfile row
-        cur.execute(f"SELECT tidx FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
+        # Retrieve tid for the just-inserted tfile row
+        cur.execute(f"SELECT tid FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
         row = cur.fetchone()
-        tidx = row[0] if row else None
+        tid = row[0] if row else None
         # Update wfile tables if member_details provided
-        if member_details and tidx is not None:
+        if member_details and tid is not None:
             for m in member_details:
                 name = m['name']
                 if '/' in name:
@@ -111,8 +112,8 @@ def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member
                 exists = cur.fetchone()[0]
                 if not exists:
                     continue
-                # Update tidx if record exists
-                cur.execute(f"UPDATE {wfile_table} SET tidx=%s WHERE wfile=%s", (tidx, wfile))
+                # Update tid if record exists
+                cur.execute(f"UPDATE {wfile_table} SET tid=%s WHERE wfile=%s", (tid, wfile))
         conn.commit()
     except Exception as e:
         print(f"Database error: {e}")
