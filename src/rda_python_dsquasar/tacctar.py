@@ -46,55 +46,81 @@ def group_files_by_size(files, min_size, max_size):
     current_size = 0
     for f in files:
         fsize = get_file_size(f)
-        if fsize > max_size:
-            logging.warning(f"File {f} is larger than max tar size ({max_size} bytes), skipping.")
+        if fsize > 2*max_size:
+            logging.warning(f"File {f} is larger than max tar size ({2*max_size} bytes), skipping.")
             continue
         if current_size + fsize > max_size:
-            if current_size >= min_size:
-                batches.append(current_batch)
+            if current_size < min_size and batches:
+                # If current batch is too small and there is a previous batch, append to previous
+                batches[-1].extend(current_batch)
                 current_batch = [f]
                 current_size = fsize
             else:
-                # If adding this file exceeds max_size but current batch is too small, force add
-                current_batch.append(f)
-                current_size += fsize
                 batches.append(current_batch)
-                current_batch = []
-                current_size = 0
+                current_batch = [f]
+                current_size = fsize
         else:
             current_batch.append(f)
             current_size += fsize
     if current_batch:
-        batches.append(current_batch)
+        if current_size < min_size and batches:
+            batches[-1].extend(current_batch)
+        else:
+            batches.append(current_batch)
     return batches
 
-def tar_batches(dirpath, batches, output_dir, root_path=None, root_dirname=None):
-    # Use root_dirname for tar file naming and arcname
+def tar_batches(dirpath, batches, output_dir, dataset_path=None, dataset_name=None):
+    # Use dataset_name for tar file naming and arcname
     for idx, batch in enumerate(batches, 1):
         num_files = len(batch)
-        tar_name = os.path.join(output_dir, f"{root_dirname}_part{idx}_{num_files}files.tar")
+        tar_name = os.path.join(output_dir, f"{dataset_name}_part{idx}_{num_files}files.tar")
         logging.info(f"Creating tar: {tar_name} with {num_files} files.")
         with tarfile.open(tar_name, "w") as tar:
             for f in batch:
                 try:
-                    # arcname should be relative to root_path, and always start with root_dirname
-                    arcname = os.path.relpath(f, root_path)
-                    arcname = os.path.join(root_dirname, arcname)
+                    # arcname should be relative to dataset_path, and always start with dataset_name
+                    arcname = os.path.relpath(f, dataset_path)
+                    arcname = os.path.join(dataset_name, arcname)
                     tar.add(f, arcname=arcname)
                 except Exception as e:
                     logging.warning(f"Failed to add {f} to tar: {e}")
 
-def process_directory_tree(root_path, output_dir):
-    root_dirname = os.path.basename(os.path.abspath(root_path))
-    # Gather all files under root_path first
+def process_directory_tree(dataset_path, output_dir, db_params=None):
+    dataset_name = os.path.basename(os.path.abspath(dataset_path))
+    wfile_table = f"dssdb.wfile_{dataset_name}"
     all_files = []
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        abs_files = [os.path.join(dirpath, f) for f in filenames]
-        all_files.extend(abs_files)
+    conn = cur = None
+    if db_params:
+        import psycopg2
+        try:
+            conn = psycopg2.connect(**{k: v for k, v in db_params.items() if v is not None})
+            cur = conn.cursor()
+        except Exception as e:
+            logging.error(f"Error connecting to database for tarred check: {e}")
+            conn = cur = None
+    for dirpath, dirnames, filenames in os.walk(dataset_path):
+        for fname in filenames:
+            fpath = os.path.join(dirpath, fname)
+            relpath = os.path.relpath(fpath, dataset_path)
+            # Skip file if record exists in wfile_table with tid > 0
+            if cur:
+                try:
+                    cur.execute(f"SELECT 1 FROM {wfile_table} WHERE wfile=%s AND tid > 0 LIMIT 1", (relpath,))
+                    exists = cur.fetchone()
+                    if exists:
+                        logging.info(f"Skipping tarred file: {fpath} (wfile={relpath}) in {wfile_table}")
+                        continue
+                except Exception as e:
+                    logging.error(f"Error checking {wfile_table} for {relpath}: {e}")
+            all_files.append(fpath)
+    if cur:
+        cur.close()
+    if conn:
+        conn.close()
     if not all_files:
         return
     batches = group_files_by_size(all_files, ONE_TB, THREE_TB)
-    tar_batches(root_path, batches, output_dir, root_path=root_path, root_dirname=root_dirname)
+    tar_batches(dataset_path, batches, output_dir, dataset_path=dataset_path, dataset_name=dataset_name)
 
 def read_directories_from_file(input_file):
     dirs = []
@@ -109,40 +135,68 @@ def read_directories_from_file(input_file):
                 logging.warning(f"Directory does not exist: {line}")
     return dirs
 
-def collect_all_files(directories):
+def collect_all_files(dataset_dirs, db_params=None):
     files = []
-    for d in directories:
+    for d in dataset_dirs:
+        dataset_name = os.path.basename(os.path.abspath(d))
+        wfile_table = f"dssdb.wfile_{dataset_name}"
+        conn = cur = None
+        if db_params:
+            import psycopg2
+            try:
+                conn = psycopg2.connect(**{k: v for k, v in db_params.items() if v is not None})
+                cur = conn.cursor()
+            except Exception as e:
+                logging.error(f"Error connecting to database for tarred check: {e}")
+                conn = cur = None
         for dirpath, dirnames, filenames in os.walk(d):
             for fname in filenames:
                 fpath = os.path.join(dirpath, fname)
+                relpath = os.path.relpath(fpath, d)
+                # Skip file if record exists in wfile_table with tid > 0
+                if cur:
+                    try:
+                        cur.execute(f"SELECT 1 FROM {wfile_table} WHERE wfile=%s AND tid > 0 LIMIT 1", (relpath,))
+                        exists = cur.fetchone()
+                        if exists:
+                            logging.info(f"Skipping tarred file: {fpath} (wfile={relpath}) in {wfile_table}")
+                            continue
+                    except Exception as e:
+                        logging.error(f"Error checking {wfile_table} for {relpath}: {e}")
                 files.append(fpath)
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
     return files
 
 def find_common_root(paths):
     return os.path.commonpath(paths) if paths else ''
 
-def tar_batches_across_dirs(files, batches, output_dir, common_root, root_dirs):
-    root_dir_paths = [Path(d).resolve() for d in root_dirs]
+def tar_batches_across_dirs(files, batches, output_dir, common_root, dataset_dirs):
+    dataset_dir_paths = [Path(d).resolve() for d in dataset_dirs]
     for idx, batch in enumerate(batches, 1):
-        # Find which root directories are represented in this batch
-        batch_root_names = set()
+        batch_dataset_names = set()
         for f in batch:
             f_path = Path(f).resolve()
-            for root_path in root_dir_paths:
+            for dataset_path in dataset_dir_paths:
                 try:
-                    if str(f_path).startswith(str(root_path)):
-                        batch_root_names.add(root_path.name)
+                    if str(f_path).startswith(str(dataset_path)):
+                        batch_dataset_names.add(dataset_path.name)
                         break
                 except Exception:
                     continue
-        prefix = "_".join(sorted(batch_root_names)) if batch_root_names else "batch"
         num_files = len(batch)
-        tar_name = os.path.join(output_dir, f"{prefix}_batch_part{idx}_{num_files}files.tar")
+        dataset_name_count = len(batch_dataset_names)
+        if dataset_name_count > 3:
+            prefix = f"{sorted(batch_dataset_names)[0]}_dn{dataset_name_count}"
+        else:
+            prefix = "_".join(sorted(batch_dataset_names)) if batch_dataset_names else "batch"
+        tar_name = os.path.join(output_dir, f"{prefix}_part{idx}_{num_files}files.tar")
         logging.info(f"Creating tar: {tar_name} with {num_files} files.")
         with tarfile.open(tar_name, "w") as tar:
             for f in batch:
                 try:
-                    # Preserve relative path from common root in tar
                     arcname = os.path.relpath(f, common_root)
                     tar.add(f, arcname=arcname)
                 except Exception as e:
@@ -151,9 +205,9 @@ def tar_batches_across_dirs(files, batches, output_dir, common_root, root_dirs):
 def get_batch_size(batch):
     return sum(get_file_size(f) for f in batch)
 
-def process_from_file(input_file, output_dir):
+def process_from_file(input_file, output_dir, db_params=None):
     directories = read_directories_from_file(input_file)
-    files = collect_all_files(directories)
+    files = collect_all_files(directories, db_params=db_params)
     if not files:
         logging.info("No files found in provided directories.")
         return
@@ -171,21 +225,31 @@ def main():
     parser = argparse.ArgumentParser(description="Tar files from a list of directories into 1-3TB tar files.")
     parser.add_argument("--input-file", help="File containing list of directories to process (one per line)")
     parser.add_argument("--output-dir", help="Directory to store tar files (default: current directory)")
-    parser.add_argument("root_dir", nargs='*', help="Root directory or directories to process")
+    parser.add_argument('--check-tarred', action='store_true', default=False, help='Skip files already tarred (tid > 0 in wfile_<dataset_name>)')
+    parser.add_argument("dataset_paths", nargs='*', help="Dataset directory or directories to process")
     args = parser.parse_args()
     output_dir = args.output_dir if args.output_dir else os.getcwd()
     os.makedirs(output_dir, exist_ok=True)
     setup_logging(output_dir)
+    db_params = None
+    if args.check_tarred:
+        db_params = {
+            'host': args.db_host if hasattr(args, 'db_host') else 'rda-db.ucar.edu',
+            'port': args.db_port if hasattr(args, 'db_port') else 5432,
+            'dbname': args.db_name if hasattr(args, 'db_name') else 'rdadb',
+            'user': args.db_user if hasattr(args, 'db_user') else 'dssdb',
+            'password': args.db_password if hasattr(args, 'db_password') else None
+        }
     if args.input_file:
-        process_from_file(args.input_file, output_dir)
-    elif args.root_dir:
-        for root in args.root_dir:
-            if not os.path.isdir(root):
-                logging.warning(f"Root directory does not exist: {root}")
+        process_from_file(args.input_file, output_dir, db_params=db_params)
+    elif args.dataset_paths:
+        for dataset_path in args.dataset_paths:
+            if not os.path.isdir(dataset_path):
+                logging.warning(f"Dataset directory does not exist: {dataset_path}")
                 continue
-            process_directory_tree(root, output_dir)
+            process_directory_tree(dataset_path, output_dir, db_params=db_params)
     else:
-        print("Error: Must provide either --input-file or root_dir.")
+        print("Error: Must provide either --input-file or dataset_paths.")
 
 if __name__ == "__main__":
     main()
