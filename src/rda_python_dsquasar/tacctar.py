@@ -266,14 +266,19 @@ def tar_batch_file(batch_file, tar_root=None):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Tar files from a list of dataset IDs into 1-3TB tar files.")
-    parser.add_argument('--batch-input-file', type=str, default=None, help='A file containing a list of batch file names, one per line. Each batch file should contain relative file names to be tarred.')
-    parser.add_argument('--batch-files', nargs='*', default=None, help='List of batch files to tar. Each batch file should contain relative file names to be tarred.')
-    parser.add_argument('--tar-root', type=str, required=True, help='Root directory for relative tar member file names (arcname). REQUIRED for all modes.')
-    parser.add_argument("--input-file", help="File containing list of dataset IDs to process (one per line)")
-    parser.add_argument("--output-dir", help="Directory to store tar files (default: current directory)")
-    parser.add_argument('--check-tarred', action='store_true', default=False, help='Skip files already tarred (tid > 0 in wfile_<dataset_name>)')
-    parser.add_argument('--tar-batch', action='store_true', default=False, help='Tar files for each batch. If not set, dump file list to .batch files instead.')
-    parser.add_argument("dataset_ids", nargs='*', help="Dataset IDs to process")
+    parser.add_argument('-bi', '--batch-input-file', type=str, default=None, help='A file containing a list of batch file names, one per line. Each batch file should contain relative file names to be tarred.')
+    parser.add_argument('-bf', '--batch-files', nargs='*', default=None, help='List of batch files to tar. Each batch file should contain relative file names to be tarred.')
+    parser.add_argument('-tr', '--tar-root', type=str, required=True, help='Root directory for relative tar member file names (arcname). REQUIRED for all modes.')
+    parser.add_argument('-if', '--input-file', help='File containing list of dataset IDs to process (one per line)')
+    parser.add_argument('-od', '--output-dir', help='Directory to store tar files (default: current directory)')
+    parser.add_argument('-ct', '--check-tarred', action='store_true', default=False, help='Skip files already tarred (tid > 0 in wfile_<dataset_name>)')
+    parser.add_argument('-tb', '--tar-batch', action='store_true', default=False, help='Tar files for each batch. If not set, dump file list to .batch files instead.')
+    parser.add_argument('-ds', '--dataset-ids', nargs='*', help='Dataset IDs to process')
+    parser.add_argument('-ht', '--db-host', type=str, default='rda-db.ucar.edu', help='Database host for tarred check')
+    parser.add_argument('-pt', '--db-port', type=int, default=5432, help='Database port for tarred check')
+    parser.add_argument('-db', '--db-name', type=str, default='rdadb', help='Database name for tarred check')
+    parser.add_argument('-us', '--db-user', type=str, default='dssdb', help='Database user for tarred check')
+    parser.add_argument('-pw', '--db-password', type=str, default=None, help='Database password for tarred check')
     args = parser.parse_args()
     output_dir = args.output_dir if args.output_dir else os.getcwd()
     os.makedirs(output_dir, exist_ok=True)
@@ -281,11 +286,11 @@ def main():
     db_params = None
     if args.check_tarred:
         db_params = {
-            'host': args.db_host if hasattr(args, 'db_host') else 'rda-db.ucar.edu',
-            'port': args.db_port if hasattr(args, 'db_port') else 5432,
-            'dbname': args.db_name if hasattr(args, 'db_name') else 'rdadb',
-            'user': args.db_user if hasattr(args, 'db_user') else 'dssdb',
-            'password': args.db_password if hasattr(args, 'db_password') else None
+            'host': args.db_host,
+            'port': args.db_port,
+            'dbname': args.db_name,
+            'user': args.db_user,
+            'password': args.db_password
         }
     # Batch tar mode
     if args.batch_input_file or args.batch_files:

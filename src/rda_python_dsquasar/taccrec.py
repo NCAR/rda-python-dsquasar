@@ -144,14 +144,14 @@ def get_uid_from_logname(db_params):
 
 def main():
     parser = argparse.ArgumentParser(description='Insert tar file summary into tfile table.')
-    parser.add_argument('--member-list', help='Path to tar member list file (from tar -tvf)')
-    parser.add_argument('--member-list-file', help='File containing list of tar member list files (one per line)')
-    parser.add_argument('--db-host', default='rda-db.ucar.edu', help='Database host (default: rda-db.ucar.edu)')
-    parser.add_argument('--db-port', default=5432, type=int, help='Database port (default: 5432)')
-    parser.add_argument('--db-name', default='rdadb', help='Database name (default: rdadb)')
-    parser.add_argument('--db-user', default='dssdb', help='Database user (default: dssdb)')
-    parser.add_argument('--db-password', help='Database password (optional, use .pgpass if omitted)')
-    parser.add_argument('--no-update', action='store_true', help='If tfile exists, skip all updates including wfile tables (default: False)')
+    parser.add_argument('-ml', '--member-list', help='Path to tar member list file (from tar -tvf)')
+    parser.add_argument('-mf', '--member-list-file', help='File containing list of tar member list files (one per line)')
+    parser.add_argument('-ht', '--db-host', default='rda-db.ucar.edu', help='Database host (default: rda-db.ucar.edu)')
+    parser.add_argument('-pt', '--db-port', default=5432, type=int, help='Database port (default: 5432)')
+    parser.add_argument('-db', '--db-name', default='rdadb', help='Database name (default: rdadb)')
+    parser.add_argument('-us', '--db-user', default='dssdb', help='Database user (default: dssdb)')
+    parser.add_argument('-pw', '--db-password', help='Database password (optional, use .pgpass if omitted)')
+    parser.add_argument('-nu', '--no-update', action='store_true', help='If tfile exists, skip all updates including wfile tables (default: False)')
     args = parser.parse_args()
     if args.member_list_file:
         with open(args.member_list_file, 'r') as f:
