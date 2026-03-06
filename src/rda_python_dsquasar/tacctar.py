@@ -69,14 +69,44 @@ def group_files_by_size(files, min_size, max_size):
             batches.append(current_batch)
     return batches
 
-def tar_batches(dirpath, batches, output_dir, dataset_path=None, dataset_name=None, tar_batch=True):
+def write_mbr_and_archive_tar(tar_file, mbr_file, archive_dir=None):
     """
-    If tar_batch is True, create tar files for each batch. Otherwise, dump file list to .batch files.
+    Write tar member list file in tar -tvf format and move tar file to archive_dir if provided.
     """
+    import pwd, grp, time, shutil
+    # Write member list file
+    with tarfile.open(tar_file, "r") as tar:
+        with open(mbr_file, "w") as mf:
+            for member in tar.getmembers():
+                mode = oct(member.mode)[-4:]
+                typechar = '-' if member.isfile() else 'd' if member.isdir() else 'l' if member.issym() else '?'
+                uname = member.uname or (pwd.getpwuid(member.uid).pw_name if hasattr(member, 'uid') else '')
+                gname = member.gname or (grp.getgrgid(member.gid).gr_name if hasattr(member, 'gid') else '')
+                size = member.size
+                mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(member.mtime))
+                mf.write(f"{typechar}{mode} {uname}/{gname} {size:9d} {mtime} {member.name}\n")
+    # Move tar file to archive_dir if specified
+    if archive_dir:
+        archive_dir_abs = os.path.abspath(archive_dir)
+        os.makedirs(archive_dir_abs, exist_ok=True)
+        dest_tar_file = os.path.join(archive_dir_abs, os.path.basename(tar_file))
+        try:
+            shutil.move(tar_file, dest_tar_file)
+            logging.info(f"Moved tar file {tar_file} to archive directory {dest_tar_file}.")
+        except Exception as e:
+            logging.error(f"Failed to move tar file {tar_file} to archive directory {archive_dir_abs}: {e}")
+
+def tar_batches(dirpath, batches, output_dir, dataset_path=None, dataset_name=None, tar_batch=True, archive_dir=None):
+    """
+    If tar_batch is True, create tar files for each batch and move to archive_dir if provided. Otherwise, dump file list to .batch files.
+    Always create a .mbr file for each tar file.
+    """
+    import shutil
     for idx, batch in enumerate(batches, 1):
         num_files = len(batch)
         tar_name = os.path.join(output_dir, f"{dataset_name}_part{idx}_{num_files}files.tar")
         batch_name = tar_name.replace(".tar", ".batch")
+        mbr_file = tar_name + '.mbr'
         if tar_batch:
             logging.info(f"Creating tar: {tar_name} with {num_files} files.")
             with tarfile.open(tar_name, "w") as tar:
@@ -87,6 +117,7 @@ def tar_batches(dirpath, batches, output_dir, dataset_path=None, dataset_name=No
                         tar.add(f, arcname=arcname)
                     except Exception as e:
                         logging.warning(f"Failed to add {f} to tar: {e}")
+            write_mbr_and_archive_tar(tar_name, mbr_file, archive_dir)
         else:
             logging.info(f"Writing batch file list: {batch_name} with {num_files} files.")
             with open(batch_name, "w") as bf:
@@ -95,7 +126,7 @@ def tar_batches(dirpath, batches, output_dir, dataset_path=None, dataset_name=No
                     arcname = os.path.join(dataset_name, arcname)
                     bf.write(arcname + "\n")
 
-def process_directory_tree(dataset_path, output_dir, db_params=None, tar_batch=True, dsid=None):
+def process_directory_tree(dataset_path, output_dir, db_params=None, tar_batch=True, dsid=None, archive_dir=None):
     dataset_name = dsid if dsid else os.path.basename(os.path.abspath(dataset_path))
     wfile_table = f"dssdb.wfile_{dataset_name}"
     all_files = []
@@ -130,7 +161,7 @@ def process_directory_tree(dataset_path, output_dir, db_params=None, tar_batch=T
     if not all_files:
         return
     batches = group_files_by_size(all_files, ONE_TB, THREE_TB)
-    tar_batches(dataset_path, batches, output_dir, dataset_path=dataset_path, dataset_name=dataset_name, tar_batch=tar_batch)
+    tar_batches(dataset_path, batches, output_dir, dataset_path=dataset_path, dataset_name=dataset_name, tar_batch=tar_batch, archive_dir=archive_dir)
 
 def read_directories_from_file(input_file, tar_root=None):
     dataset_ids = []
@@ -186,7 +217,8 @@ def collect_all_files(dataset_dirs, db_params=None):
 def find_common_root(paths):
     return os.path.commonpath(paths) if paths else ''
 
-def tar_batches_across_dirs(files, batches, output_dir, tar_root, dataset_paths, tar_batch=True, dataset_ids=None):
+def tar_batches_across_dirs(files, batches, output_dir, tar_root, dataset_paths, tar_batch=True, dataset_ids=None, archive_dir=None):
+    import shutil
     dataset_dir_paths = [Path(d).resolve() for d in dataset_paths]
     dsid_map = {str(Path(d).resolve()): dsid for dsid, d in zip(dataset_ids, dataset_paths)} if dataset_ids else {}
     for idx, batch in enumerate(batches, 1):
@@ -208,6 +240,7 @@ def tar_batches_across_dirs(files, batches, output_dir, tar_root, dataset_paths,
             prefix = "_".join(sorted(batch_dataset_names)) if batch_dataset_names else "batch"
         tar_name = os.path.join(output_dir, f"{prefix}_part{idx}_{num_files}files.tar")
         batch_name = tar_name.replace(".tar", ".batch")
+        mbr_file = tar_name + '.mbr'
         if tar_batch:
             logging.info(f"Creating tar: {tar_name} with {num_files} files.")
             with tarfile.open(tar_name, "w") as tar:
@@ -217,6 +250,7 @@ def tar_batches_across_dirs(files, batches, output_dir, tar_root, dataset_paths,
                         tar.add(f, arcname=arcname)
                     except Exception as e:
                         logging.warning(f"Failed to add {f} to tar: {e}")
+            write_mbr_and_archive_tar(tar_name, mbr_file, archive_dir)
         else:
             logging.info(f"Writing batch file list: {batch_name} with {num_files} files.")
             with open(batch_name, "w") as bf:
@@ -227,14 +261,7 @@ def tar_batches_across_dirs(files, batches, output_dir, tar_root, dataset_paths,
 def get_batch_size(batch):
     return sum(get_file_size(f) for f in batch)
 
-def tar_batch_file(batch_file, tar_root=None):
-    """
-    Read a filelist in batch_file and tar the filelist into a tar file named like batch file name by replacing .batch with .tar.
-    Prepend path tar_root to the file names in each batch file for the full path.
-    After tarring, dump a member file detail list (like 'tar -tvf') into a .mbr file named as tarfilename+'.mbr'.
-    If the .mbr file already exists, skip the tar action.
-    """
-    import pwd, grp, time
+def tar_batch_file(batch_file, tar_root=None, archive_dir=None):
     tar_file = batch_file.replace('.batch', '.tar')
     mbr_file = tar_file + '.mbr'
     if os.path.exists(mbr_file):
@@ -250,18 +277,7 @@ def tar_batch_file(batch_file, tar_root=None):
                 tar.add(abs_path, arcname=rel_path)
             except Exception as e:
                 logging.warning(f"Failed to add {abs_path} as {rel_path} to tar: {e}")
-    # Write member list file in tar -tvf format
-    with tarfile.open(tar_file, "r") as tar:
-        with open(mbr_file, "w") as mf:
-            for member in tar.getmembers():
-                mode = oct(member.mode)[-4:]
-                typechar = '-' if member.isfile() else 'd' if member.isdir() else 'l' if member.issym() else '?'
-                uname = member.uname or (pwd.getpwuid(member.uid).pw_name if hasattr(member, 'uid') else '')
-                gname = member.gname or (grp.getgrgid(member.gid).gr_name if hasattr(member, 'gid') else '')
-                size = member.size
-                mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(member.mtime))
-                # Format: -rw-r--r-- user/group size date name
-                mf.write(f"{typechar}{mode} {uname}/{gname} {size:9d} {mtime} {member.name}\n")
+    write_mbr_and_archive_tar(tar_file, mbr_file, archive_dir)
 
 def main():
     import argparse
@@ -279,6 +295,7 @@ def main():
     parser.add_argument('-db', '--db-name', type=str, default='rdadb', help='Database name for tarred check')
     parser.add_argument('-us', '--db-user', type=str, default='dssdb', help='Database user for tarred check')
     parser.add_argument('-pw', '--db-password', type=str, default=None, help='Database password for tarred check')
+    parser.add_argument('-ad', '--archive-dir', type=str, default=None, help='Directory to move tar files to after creation (optional)')
     args = parser.parse_args()
     output_dir = args.output_dir if args.output_dir else os.getcwd()
     os.makedirs(output_dir, exist_ok=True)
@@ -301,7 +318,7 @@ def main():
         if args.batch_files:
             batch_files.extend(args.batch_files)
         for batch_file in batch_files:
-            tar_batch_file(batch_file, tar_root=args.tar_root)
+            tar_batch_file(batch_file, tar_root=args.tar_root, archive_dir=args.archive_dir)
         return
     # Directory tree processing mode
     if args.input_file:
@@ -315,7 +332,7 @@ def main():
             logging.info(f"Last batch size ({get_batch_size(batches[-1])} bytes) < 1TB, appending to previous batch.")
             batches[-2].extend(batches[-1])
             batches.pop()
-        tar_batches_across_dirs(files, batches, output_dir, args.tar_root, dataset_paths, tar_batch=args.tar_batch, dataset_ids=None)
+        tar_batches_across_dirs(files, batches, output_dir, args.tar_root, dataset_paths, tar_batch=args.tar_batch, dataset_ids=None, archive_dir=args.archive_dir)
         return
     elif args.dataset_ids:
         for dsid in args.dataset_ids:
@@ -323,7 +340,7 @@ def main():
             if not os.path.isdir(dataset_path):
                 logging.warning(f"Dataset directory does not exist: {dataset_path}")
                 continue
-            process_directory_tree(dataset_path, output_dir, db_params=db_params, tar_batch=args.tar_batch, dsid=dsid)
+            process_directory_tree(dataset_path, output_dir, db_params=db_params, tar_batch=args.tar_batch, dsid=dsid, archive_dir=args.archive_dir)
         return
     else:
         print("Error: Must provide either --input-file or dataset_ids or --batch-files or --batch-input-file.")
