@@ -322,7 +322,7 @@ def main():
     parser.add_argument('-tr', '--tar-root', type=str, required=True, help='Root directory for relative tar member file names (arcname). REQUIRED for all modes.')
     parser.add_argument('-if', '--input-file', help='File containing list of dataset IDs to process (one per line)')
     parser.add_argument('-od', '--output-dir', help='Directory to store tar files (default: current directory)')
-    parser.add_argument('-ct', '--check-tarred', type=int, default=0, help='If >0, skip files already tarred (tid > 0 in wfile_<dataset_name>); if 0, do not check database (default: 0)')
+    parser.add_argument('-ct', '--check-tarred', type=int, default=0, help='If >0, skip files already tarred (tid > 0 in wfile_<dataset_name>) and files with no wfile record (tid reported as -1); if 0, do not check database (default: 0)')
     parser.add_argument('-tb', '--tar-batch', action='store_true', default=False, help='Tar files for each batch. If not set, dump file list to .batch files instead.')
     parser.add_argument('-ds', '--dataset-ids', nargs='*', help='Dataset IDs to process')
     parser.add_argument('-ht', '--db-host', type=str, default='rda-db.ucar.edu', help='Database host for tarred check')
