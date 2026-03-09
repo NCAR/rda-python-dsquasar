@@ -356,19 +356,28 @@ def main():
             dataset_ids = args.dataset_ids
             dataset_paths = [os.path.join(args.tar_root, dsid) for dsid in dataset_ids]
         import psycopg2
-        for dsid, dataset_path in zip(dataset_ids, dataset_paths):
-            if not os.path.isdir(dataset_path):
-                logging.warning(f"Dataset directory does not exist: {dataset_path}")
-                continue
-            wfile_table = f"dssdb.wfile_{dsid}"
-            try:
-                conn = psycopg2.connect(**{k: v for k, v in db_params.items() if v is not None})
-                cur = conn.cursor()
-                files.extend(get_wfiles_tid0(cur, wfile_table, dataset_path))
-                cur.close()
+        conn = None
+        try:
+            conn = psycopg2.connect(**{k: v for k, v in db_params.items() if v is not None})
+            for dsid, dataset_path in zip(dataset_ids, dataset_paths):
+                if not os.path.isdir(dataset_path):
+                    logging.warning(f"Dataset directory does not exist: {dataset_path}")
+                    continue
+                wfile_table = f"dssdb.wfile_{dsid}"
+                cur = None
+                try:
+                    cur = conn.cursor()
+                    files.extend(get_wfiles_tid0(cur, wfile_table, dataset_path))
+                except Exception as e:
+                    logging.error(f"Error processing wfile table for {dsid}: {e}")
+                finally:
+                    if cur is not None:
+                        cur.close()
+        except Exception as e:
+            logging.error(f"Error connecting to database: {e}")
+        finally:
+            if conn is not None:
                 conn.close()
-            except Exception as e:
-                logging.error(f"Error connecting to database for {dsid}: {e}")
         if not files:
             logging.info("No files with tid=0 found in wfile tables.")
             return
