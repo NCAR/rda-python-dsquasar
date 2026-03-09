@@ -331,7 +331,7 @@ def main():
     parser.add_argument('-us', '--db-user', type=str, default='dssdb', help='Database user for tarred check')
     parser.add_argument('-pw', '--db-password', type=str, default=None, help='Database password for tarred check')
     parser.add_argument('-ad', '--archive-dir', type=str, default=None, help='Directory to move tar files to after creation (optional)')
-    parser.add_argument('-cw', '--check-wfile', type=int, default=0, help='If nonzero, gather wfile entries with tid=0 from wfile table for each dataset and use those files for tarring (works with -if and -ds only). If set, assigns check_tarred to this value.')
+    parser.add_argument('-cw', '--check-wfile', type=int, default=0, help='If nonzero, gather wfile entries with tid=0 from wfile table for each dataset and use those files for tarring (works with -if and -ds only). If check_tarred is 0, assigns check_tarred to this value.')
     args = parser.parse_args()
     output_dir = args.output_dir if args.output_dir else os.getcwd()
     os.makedirs(output_dir, exist_ok=True)
