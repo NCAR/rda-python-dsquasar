@@ -149,13 +149,30 @@ def get_wfiles_tid0(cur, wfile_table, dataset_path):
     Return a list of absolute file paths for all wfile entries in wfile_table where tid = 0.
     """
     files = []
+    dataset_root = Path(dataset_path).resolve()
     try:
         cur.execute(f"SELECT wfile FROM {wfile_table} WHERE tid = 0")
         for row in cur.fetchall():
             relpath = row[0]
-            abspath = os.path.join(dataset_path, relpath)
+            # Reject absolute paths from the database
+            if os.path.isabs(relpath):
+                logging.warning(
+                    f"Skipping wfile with absolute path from DB: {relpath}"
+                )
+                continue
+            try:
+                abspath = (dataset_root / relpath).resolve()
+            except Exception as e:
+                logging.warning(f"Failed to resolve path for wfile {relpath}: {e}")
+                continue
+            # Ensure the resolved path is within the dataset root
+            if not (abspath == dataset_root or dataset_root in abspath.parents):
+                logging.warning(
+                    f"Skipping wfile escaping dataset root: {relpath} -> {abspath}"
+                )
+                continue
             if os.path.isfile(abspath):
-                files.append(abspath)
+                files.append(str(abspath))
             else:
                 logging.warning(f"wfile in DB but not found on disk: {abspath}")
     except Exception as e:
