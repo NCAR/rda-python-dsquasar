@@ -5,6 +5,8 @@ import argparse
 import psycopg2
 import hashlib
 from datetime import datetime
+import time
+from psycopg2 import OperationalError
 
 def get_tar_summary_and_details(member_list_path):
     details = []
@@ -68,60 +70,82 @@ def get_tar_summary_and_details(member_list_path):
         'dsid': dsid
     }, member_details
 
+def connect_with_retry(db_params, max_retries=1, delay=2):
+    attempt = 0
+    while attempt <= max_retries:
+        try:
+            return psycopg2.connect(**db_params)
+        except OperationalError as e:
+            if 'server closed the connection unexpectedly' in str(e) and attempt < max_retries:
+                time.sleep(delay)
+                attempt += 1
+                continue
+            raise
+
 def insert_tfile_row(summary, db_params, extra, update_on_conflict=False, member_details=None):
     table_name = 'dssdb.tfile'
-    conn = psycopg2.connect(**db_params)
-    cur = conn.cursor()
-    columns = [
-        'tfile', 'data_size', 'wcount', 'date_created', 'time_created',
-        'date_modified', 'time_modified', 'file_format', 'status',
-        'uid', 'dsid', 'data_format', 'disp_order', 'dsids', 'note'
-    ]
-    values = [
-        summary['tfile'], summary['data_size'], summary['wcount'],
-        summary['date_created'], summary['time_created'],
-        summary['date_modified'], summary['time_modified'],
-        'tar', 'T',
-        extra.get('uid'), extra.get('dsid'), extra.get('data_format'),
-        extra.get('disp_order'), extra.get('dsids'), extra.get('note')
-    ]
-    placeholders = ','.join(['%s'] * len(columns))
-    sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
-    if update_on_conflict:
-        update_cols = [col for col in columns if col != 'tfile']
-        set_clause = ', '.join([f"{col}=EXCLUDED.{col}" for col in update_cols])
-        sql += f" ON CONFLICT (tfile) DO UPDATE SET {set_clause}"
-    try:
-        cur.execute(sql, values)
-        conn.commit()
-        # Retrieve tid for the just-inserted tfile row
-        cur.execute(f"SELECT tid FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
-        row = cur.fetchone()
-        tid = row[0] if row else None
-        # Update wfile tables if member_details provided
-        if member_details and tid is not None:
-            for m in member_details:
-                name = m['name']
-                if '/' in name:
-                    cdsid, wfile = name.split('/', 1)
-                else:
-                    cdsid, wfile = name, ''
-                wfile_table = f"dssdb.wfile_{cdsid}"
-                # Check if table exists
-                cur.execute("SELECT to_regclass(%s)", (wfile_table,))
-                exists = cur.fetchone()[0]
-                if not exists:
-                    continue
-                # Update tid if record exists
-                cur.execute(f"UPDATE {wfile_table} SET tid=%s WHERE wfile=%s", (tid, wfile))
-        conn.commit()
-    except Exception as e:
-        print(f"Database error: {e}")
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
-        conn.close()
+    attempt = 0
+    max_retries = 1
+    while attempt <= max_retries:
+        try:
+            conn = connect_with_retry(db_params)
+            cur = conn.cursor()
+            columns = [
+                'tfile', 'data_size', 'wcount', 'date_created', 'time_created',
+                'date_modified', 'time_modified', 'file_format', 'status',
+                'uid', 'dsid', 'data_format', 'disp_order', 'dsids', 'note'
+            ]
+            values = [
+                summary['tfile'], summary['data_size'], summary['wcount'],
+                summary['date_created'], summary['time_created'],
+                summary['date_modified'], summary['time_modified'],
+                'tar', 'T',
+                extra.get('uid'), extra.get('dsid'), extra.get('data_format'),
+                extra.get('disp_order'), extra.get('dsids'), extra.get('note')
+            ]
+            placeholders = ','.join(['%s'] * len(columns))
+            sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+            if update_on_conflict:
+                update_cols = [col for col in columns if col != 'tfile']
+                set_clause = ', '.join([f"{col}=EXCLUDED.{col}" for col in update_cols])
+                sql += f" ON CONFLICT (tfile) DO UPDATE SET {set_clause}"
+            cur.execute(sql, values)
+            conn.commit()
+            cur.execute(f"SELECT tid FROM {table_name} WHERE tfile=%s", (summary['tfile'],))
+            row = cur.fetchone()
+            tid = row[0] if row else None
+            if member_details and tid is not None:
+                for m in member_details:
+                    name = m['name']
+                    if '/' in name:
+                        cdsid, wfile = name.split('/', 1)
+                    else:
+                        cdsid, wfile = name, ''
+                    wfile_table = f"dssdb.wfile_{cdsid}"
+                    cur.execute("SELECT to_regclass(%s)", (wfile_table,))
+                    exists = cur.fetchone()[0]
+                    if not exists:
+                        continue
+                    cur.execute(f"UPDATE {wfile_table} SET tid=%s WHERE wfile=%s", (tid, wfile))
+            conn.commit()
+            cur.close()
+            conn.close()
+            break
+        except Exception as e:
+            if 'server closed the connection unexpectedly' in str(e) and attempt < max_retries:
+                attempt += 1
+                time.sleep(2)
+                continue
+            print(f"Database error: {e}")
+            try:
+                cur.close()
+            except:
+                pass
+            try:
+                conn.close()
+            except:
+                pass
+            raise
 
 def get_uid_from_logname(db_params):
     import getpass
@@ -130,17 +154,26 @@ def get_uid_from_logname(db_params):
         logname = os.getlogin()
     except Exception:
         logname = os.environ.get('USER') or getpass.getuser()
-    conn = psycopg2.connect(**db_params)
-    cur = conn.cursor()
-    # Ensure logname is quoted as a string in the query
-    cur.execute("SELECT userno FROM dssdb.dssgrp WHERE logname=%s LIMIT 1", (str(logname),))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if row:
-        return row[0]
-    else:
-        raise ValueError(f"User logname '{logname}' not found in dssdb.dssgrp table.")
+    attempt = 0
+    max_retries = 1
+    while attempt <= max_retries:
+        try:
+            conn = connect_with_retry(db_params)
+            cur = conn.cursor()
+            cur.execute("SELECT userno FROM dssdb.dssgrp WHERE logname=%s LIMIT 1", (str(logname),))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if row:
+                return row[0]
+            else:
+                raise ValueError(f"User logname '{logname}' not found in dssdb.dssgrp table.")
+        except Exception as e:
+            if 'server closed the connection unexpectedly' in str(e) and attempt < max_retries:
+                attempt += 1
+                time.sleep(2)
+                continue
+            raise
 
 def main():
     parser = argparse.ArgumentParser(description='Insert tar file summary into tfile table.')
