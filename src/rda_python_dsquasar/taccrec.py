@@ -19,7 +19,7 @@ def get_tar_summary_and_details(member_list_path):
         with open(member_list_path, 'r') as f:
             for idx, line in enumerate(f):
                 line = line.strip()
-                if not line or line.startswith('-rw') is False:
+                if not line:
                     continue
                 parts = line.split()
                 if len(parts) < 6:

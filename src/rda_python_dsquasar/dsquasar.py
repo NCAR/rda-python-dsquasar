@@ -85,7 +85,7 @@ class DsQuasar(PgCMD, PgSplit):
       self.TFCOUNT = 100          # if file count is greater, use self.MINSIZE for tar file
       self.SUBLMTS = 2000         # file count limit for a sub-group
       self.PGBACK = {
-         'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['GDEXUSER']),
+         'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
          'action' : self.CTACTS,
          'chgdays' : 0,
@@ -920,7 +920,7 @@ class DsQuasar(PgCMD, PgSplit):
       fname = pgrec[tname]
       chome = self.PGLOG['DECSHOME'] if cate == 's' else self.PGLOG['DSDHOME']
       if pgrec['locflag'] == 'O':
-         bucket = 'gdex-decsdata' if cate == 's' else self.PGLOC['OBJCTBKT']
+         bucket = 'gdex-decsdata' if cate == 's' else self.PGLOG['OBJCTBKT']
          ofile = self.join_paths(dsid, fname)
          info = self.check_object_file(ofile, bucket, 1, self.ERRACT)
          if not info: return False
