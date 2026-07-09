@@ -81,7 +81,7 @@ class DsTACC(PgCMD, PgSplit):
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
       self.TFCOUNT = 1000000      # if file count is greater, use self.MINSIZE for tar file
       self.PGBACK = {
-         'workdir' : "{}/{}/tacc_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['GDEXUSER']),
+         'workdir' : "{}/{}/tacc_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
          'action' : self.CTACTS,
          'chgdays' : 0,
@@ -857,7 +857,7 @@ class DsTACC(PgCMD, PgSplit):
       fname = pgrec[tname]
       chome = self.PGLOG['DECSHOME'] if cate == 's' else self.PGLOG['DSDHOME']
       if pgrec['locflag'] == 'O':
-         bucket = 'gdex-decsdata' if cate == 's' else self.PGLOC['OBJCTBKT']
+         bucket = 'gdex-decsdata' if cate == 's' else self.PGLOG['OBJCTBKT']
          ofile = self.join_paths(dsid, fname)
          info = self.check_object_file(ofile, bucket, 1, self.ERRACT)
          if not info: return False
