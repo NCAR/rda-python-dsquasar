@@ -12,7 +12,7 @@
 #             to gather Web and Saved bfiles, tar them into larger (> 2GB) bfiles, and
 #             back them up onto Quasar Backup Servers, at the Globus end points of
 #             NCAR GDEX Quasar and/or NCAR GDEX Quasar Drdata, for Backup and/or
-#             desaster recovery copies, respectively. The file tarring and backing up
+#             disaster recovery copies, respectively. The file tarring and backing up
 #             processes are completed in utility program dsarch.
 #
 #    Github : https://github.com/NCAR/rda-python-dsquasar.git
@@ -84,6 +84,8 @@ class DsQuasar(PgCMD, PgSplit):
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
       self.TFCOUNT = 100          # if file count is greater, use self.MINSIZE for tar file
       self.SUBLMTS = 2000         # file count limit for a sub-group
+      self.MPLIMIT = 1000000      # detail file count per batch process for multi-processing
+      self.MPMAX = 8              # maximum number of batch processes for multi-processing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -105,12 +107,14 @@ class DsQuasar(PgCMD, PgSplit):
       self.dstart = 0
 
    # read in command line parameters
-   def read_parameters(self):   
+   def read_parameters(self):
       self.PGLOG['LOGFILE'] = "dsquasar.log"   # set different log file
+      self.set_help_path(__file__)
       self.dssdb_dbname()
       option = None
       argv = sys.argv[1:]
       for arg in argv:
+         if re.match(r'^-(h|-help)$', arg, re.I): self.show_usage('dsquasar')
          ms = re.match(r'^-(a|b|c|d|e|E|l|m|n|t|u|A|B|D)$', arg)
          if ms:
             arg = ms.group(1)
@@ -149,27 +153,7 @@ class DsQuasar(PgCMD, PgSplit):
                self.add_to_dsids(arg)
          else:
             self.pglog(arg + ": Value without leading option", self.LGWNEX)
-      if not (self.sopts['a'] or self.dsids):
-         print("dsquasar [-b] [(-a|-t DatasetIDs)] [-c ChangeDays] [-(e|E)] [-(B|D)] [-A ActionBits] \\")
-         print("         [-l (Y|N)] [-m ProcessCount] [-n] [-u] [-d [HostName] [TryCount]")
-         print("  Option -a - gather files of all datasets for Quasar Backup, or")
-         print("  Option -t - specify dataset IDs to backup files, wildcard % is allowed")
-         print("  Option -b - turn the background mode on; no screen display")
-         print("  Option -c - change days to work with option -A 1 to rebackup changed files")
-         print("  Option -d - turn the delay mode on for running as a batch job")
-         print("  Option -e - send an email to specialist for statistics")
-         print("  Option -E - send an email to specialist for detail statistics")
-         print("  Option -B - Quasar Backup only for the provided datasets, or")
-         print("  Option -D - Quasar Backup&Drdata; default to both B & D")
-         print("  Option -A - Action bits, 1 - create dsarch input files; 2 - build tarfiles;")
-         print("              4 - Transfer Quasar backup files; 8 - Check Backup Files;")
-         print("              16 - Dump Backup Statistics; default to 3 for 1+2 actions,")
-         print("              and the valid values are 1,2,3,4,6,7,8,16")
-         print("  Option -l - flag to check&lock dataset before backup processes, defaults to Y")
-         print("  Option -m - number of concurrent processes, defaults to 1")
-         print("  Option -n - gather and show the available file counts with no backup actions")
-         print("  Option -u - to clean up backup locks for provided dataset IDs")
-         sys.exit(0)
+      if not (self.sopts['a'] or self.dsids): self.show_usage('dsquasar')
       self.PGBACK['cmd'] = "dsquasar {}".format(' '.join(argv))
 
    # do quasar backup process
@@ -331,6 +315,18 @@ class DsQuasar(PgCMD, PgSplit):
          self.backup_dataset_tarfiles(dsfiles, 'B')
          self.backup_dataset_tarfiles(dsfiles, 'D')
 
+   # size up the number of batch processes from the detail file count for the
+   # backup actions; scales one process per MPLIMIT files, capped at MPMAX
+   def batch_process_count(self, acts):
+      fcnt = 0
+      if acts&self.CINACT: fcnt += self.gather_dataset_files(None)
+      if acts&self.TARACT: fcnt += self.gather_dataset_infiles(None)
+      if acts&self.BCKACT: fcnt += self.gather_dataset_tarfiles(None)
+      if fcnt <= self.MPLIMIT: return 1
+      mproc = (fcnt + self.MPLIMIT - 1)//self.MPLIMIT
+      if mproc > self.MPMAX: mproc = self.MPMAX
+      return mproc
+
    # start none daemon and intialize dscheck counts
    def start_dsquasar_none_daemon(self, act, fcnt = 0):
       acts = self.PGBACK['action']
@@ -338,11 +334,29 @@ class DsQuasar(PgCMD, PgSplit):
          dsid = self.dsids[0] if len(self.dsids) == 1 else ''
          if not re.match(r'^[a-z]\d{6}$', dsid): dsid = ''
          cact = ('A' if acts < 10 else '') + str(acts)
-         if act == self.STTACT or acts&self.NBACTS != acts:
-            self.set_one_boption('qoptions', '-l walltime=24:00:00', 1)
+         # only the initial delayed submit (not yet under PBS) sets qoptions for the batch
+         # job the dscheck daemon will start; size up multi-processing from the detail file
+         # count (unless an explicit -m N was given) and reserve matching PBS cpus. the
+         # invocation argv is left unchanged so a repeat submit with the same argv still
+         # blocks as a duplicate. a command-line or the PBS batch run does not set qoptions.
+         if self.PGLOG['CURBID'] < 1 and (act == self.STTACT or acts&self.NBACTS != acts):
+            qoptions = '-l walltime=24:00:00'
+            if acts&self.NBACTS != acts:
+               if self.PGBACK['mproc'] < 2: self.PGBACK['mproc'] = self.batch_process_count(acts)
+               if self.PGBACK['mproc'] > 1:
+                  qoptions += ",select=1:ncpus={0}:mem={0}gb".format(self.PGBACK['mproc'])
+            self.set_one_boption('qoptions', qoptions, 1)
          self.init_dscheck(0, '', "dsquasar", dsid, cact, self.PGBACK['workdir'],
                             self.PGLOG['CURUID'], self.bopts, self.LOGWRN)
-         if self.PGBACK['mproc'] > 1: self.PGBACK['mproc'] = 1
+         # on the PBS batch run, take the process count from the reserved ncpus in qoptions
+         # instead of recomputing it
+         if self.PGLOG['DSCHECK'] and self.PGBACK['mproc'] < 2 and acts&self.NBACTS != acts:
+            pgrec = self.pgget('dscheck', 'qoptions',
+                               "cindex = {}".format(self.PGLOG['DSCHECK']['cindex']), self.LGEREX)
+            if pgrec and pgrec['qoptions']:
+               ms = re.search(r'ncpus=(\d+)', pgrec['qoptions'])
+               if ms: self.PGBACK['mproc'] = int(ms.group(1))
+         if self.PGBACK['mproc'] > 1 and acts&self.NBACTS == acts: self.PGBACK['mproc'] = 1
       elif self.PGBACK['mproc'] > 1 and acts&self.NBACTS == acts:
          self.PGBACK['mproc'] = 1
       self.start_none_daemon('dsquasar', '', self.PGLOG['CURUID'], self.PGBACK['mproc'], 60, 1)
@@ -409,7 +423,7 @@ class DsQuasar(PgCMD, PgSplit):
       dmsg = list(bfiles)[0] if dcnt == 1 else "{} datasets".format(dcnt)
       self.pglog("{}: {} for {} ...".format(amsg, bmsg, dmsg), self.WARNLG)
       qinfo = {'backflag' : backflag, 'bid' : self.current_bid(), 'dsids' : [], 'fcnt' : 0,
-               'size' : 0, 'infiles' : [], 'instr' : '', 'qdsids' : [],
+               'size' : 0, 'infiles' : [], 'instr' : '', 'qdsids' : [], 'abids' : [],
                'dslocks' : [], 'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
          if len(qinfo['dsids']) == self.DSCNT: self.process_one_backup_file(qinfo, True, False)
@@ -427,6 +441,9 @@ class DsQuasar(PgCMD, PgSplit):
                self.lock_dataset(dsid, 0, self.LGEREX)
                qinfo['dslocks'].remove(dsid)
             qinfo['dsids'] = []
+      if self.PGBACK['mproc'] > 1:
+         self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
+         self.confirm_quasar_counts(qinfo, qinfo['abids'], "status = 'T'")   # recount confirmed backups from RDADB
       if qinfo['dslocks']:
          for dsid in qinfo['dslocks']:
             self.lock_dataset(dsid, 0, self.LGEREX)  # unlock the locked datasets
@@ -475,7 +492,7 @@ class DsQuasar(PgCMD, PgSplit):
       bmsg = self.BACKMSG[backflag]
       s = 's' if bcnt > 1 else ''
       self.pglog("{}: {} {} file{}...".format(amsg, bcnt, bmsg, s), self.WARNLG)
-      qinfo = {'backflag' : backflag, 'bid' : 0, 'dsids' : [], 'fcnt' : 0, 'size' : 0,
+      qinfo = {'backflag' : backflag, 'bid' : 0, 'dsids' : [], 'fcnt' : 0, 'size' : 0, 'abids' : [],
                'infiles' : [], 'instr' : '', 'qdsids' : [], 'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
          if self.PGBACK['dolock'] and self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
@@ -485,6 +502,9 @@ class DsQuasar(PgCMD, PgSplit):
             for bkey in binfo: qinfo[bkey] = binfo[bkey]
             self.process_one_backup_file(qinfo, False)
          if self.PGBACK['dolock']: self.lock_dataset(dsid, 0, self.LOGERR)
+      if self.PGBACK['mproc'] > 1:
+         self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
+         self.confirm_quasar_counts(qinfo, qinfo['abids'], "status = 'T'")   # recount confirmed backups from RDADB
       qcnt = qinfo['qcnt']
       if qcnt > 0:
          self.PGBACK['bckcnt'] += qcnt
@@ -522,6 +542,9 @@ class DsQuasar(PgCMD, PgSplit):
          if qinfo['size'] < self.BCKSIZE: continue
          self.transfer_quasar_tarfiles(qinfo)
       if qinfo['size'] > 0: self.transfer_quasar_tarfiles(qinfo)
+      if self.PGBACK['mproc'] > 1:
+         self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
+         self.confirm_quasar_counts(qinfo, list(bfiles), "status = 'A'")   # recount confirmed backups from RDADB
       qcnt = qinfo['qcnt']
       if qcnt > 0:
          self.PGBACK['bckcnt'] += qcnt
@@ -562,6 +585,25 @@ class DsQuasar(PgCMD, PgSplit):
       if self.PGBACK['pstep']: self.record_dscheck_status("F")
       self.pgexit(0)
 
+   # recompute the confirmed backup counts from RDADB after all child processes
+   # finished, so a multi-process summary reflects succeeded (not just started) work
+   def confirm_quasar_counts(self, qinfo, bids, dcnd):
+      qinfo['qcnt'] = qinfo['qfcnt'] = qinfo['qsize'] = 0
+      qinfo['qdsids'] = []
+      if not bids: return
+      cnd = "{} AND bid IN ({})".format(dcnd, ','.join(str(bid) for bid in bids))
+      pgrecs = self.pgmget('bfile', "dsid, dsids, data_size size, (scount + wcount) fcnt", cnd, self.LGEREX)
+      bcnt = len(pgrecs['dsid']) if pgrecs else 0
+      for i in range(bcnt):
+         qinfo['qcnt'] += 1
+         qinfo['qfcnt'] += pgrecs['fcnt'][i]
+         qinfo['qsize'] += pgrecs['size'][i]
+         dsid = pgrecs['dsid'][i]
+         if dsid not in qinfo['qdsids']: qinfo['qdsids'].append(dsid)
+         if pgrecs['dsids'][i]:
+            for did in pgrecs['dsids'][i].split(','):
+               if did and did not in qinfo['qdsids']: qinfo['qdsids'].append(did)
+
    # backup one Quasar Backup or Backup&Drdata from one or multiple inputs and,
    # reset the quasar backup dict
    def process_one_backup_file(self, qinfo, addback, keepid = False):
@@ -580,6 +622,7 @@ class DsQuasar(PgCMD, PgSplit):
       else:
          bid = qinfo['bid']
          qfile = qinfo['bfile']
+      if 'abids' in qinfo: qinfo['abids'].append(bid)   # track dispatched bids for confirmed recount
       stat = 1
       if self.PGBACK['action'] > self.CINACT:
          s = 's' if fcnt > 1 else ''
@@ -601,7 +644,7 @@ class DsQuasar(PgCMD, PgSplit):
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
                elif re.search(r'file backed up to', self.PGLOG['SYSERR']):
                   if self.pgdel('bfile', f"bid = {bid}"):
-                     self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", self.DTLACT)
+                     self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplication", self.DTLACT)
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
                sys.exit(0)  # stop child process
             else:
@@ -614,7 +657,7 @@ class DsQuasar(PgCMD, PgSplit):
                for infile in qinfo['infiles']: self.delete_local_file(infile)
             elif re.search(r'file backed up to', self.PGLOG['SYSERR']):
                if self.pgdel('bfile', f"bid = {bid}"):
-                  self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplicattion", self.DTLACT)
+                  self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplication", self.DTLACT)
                for infile in qinfo['infiles']: self.delete_local_file(infile)
             else:
                self.PGBACK['errcnt'] += 1
@@ -675,10 +718,10 @@ class DsQuasar(PgCMD, PgSplit):
       dstat = bstat = -1
       if ccnt == 0 or self.PGSIG['PPID'] > 1:
          if bflg == 'D':
-            dstat = self.quasar_multiple_trasnfer(tofiles, fromfiles, 'gdex-quasar-drdata', 'gdex-glade', self.ERRACT)
+            dstat = self.quasar_multiple_transfer(tofiles, fromfiles, 'gdex-quasar-drdata', 'gdex-glade', self.ERRACT)
             if not dstat: self.pglog("Error Quaser Drdata for " + fmsg, self.ERRACT|self.LOGERR)
-         bstat = self.quasar_multiple_trasnfer(tofiles, fromfiles, 'gdex-quasar', 'gdex-glade', self.ERRACT)
-         if not dstat: self.pglog("Error Quaser Backup for " + fmsg, self.ERRACT|self.LOGERR)
+         bstat = self.quasar_multiple_transfer(tofiles, fromfiles, 'gdex-quasar', 'gdex-glade', self.ERRACT)
+         if not bstat: self.pglog("Error Quaser Backup for " + fmsg, self.ERRACT|self.LOGERR)
          if dstat == self.FINISH: dstat = self.check_globus_finished(tofiles[0], 'gdex-quasar-drdata', self.ERRACT|self.NOWAIT)
          if bstat == self.FINISH: bstat = self.check_globus_finished(tofiles[0], 'gdex-quasar', self.ERRACT|self.NOWAIT)
          if dstat and bstat:
@@ -836,7 +879,6 @@ class DsQuasar(PgCMD, PgSplit):
 
    # get web/saved files to backup for a given group condition and file option
    def get_group_files(self, dsid, gcnd, dcnd, bfiles, fopt, infiles, cnts):
-      rcnt = 0
       if self.PGBACK['chgdays'] > 0:
          return self.get_group_changed_files(dsid, gcnd, dcnd, bfiles, fopt, infiles, cnts)
       else:
@@ -982,28 +1024,27 @@ class DsQuasar(PgCMD, PgSplit):
    def get_backup_options(self, dsid, dcnd):
       fopt = 0
       bcnd = "= 0" if self.PGBACK['chgdays'] < 1 else "> 0"
-   #   if self.pgget('sfile', 'sid', "{} AND bid {}".format(dcnd, bcnd), self.LGWNEX): fopt |= self.SOPT
       if self.pgget_wfile(dsid, 'wid', "bid " + bcnd, self.LGWNEX): fopt |= self.WOPT
       return fopt
 
    # gather all available dataset ids to backup data files
    def gather_dataset_files(self, dsfiles, unlock = True):
       fcnt = 0
+      # warn per named dataset with no files; stay silent when scanning all datasets
+      logact = self.LOGWRN if self.dsids else 0
       if self.dsids:
+         pgrecs = []
          for dsid in self.dsids:
-            dcnd = "dsid = '{}'".format(dsid)
-            pgrec = self.pgget("dataset", "dsid, backflag, pid", dcnd, self.LGWNEX)
-            if pgrec:
-               if unlock and pgrec['pid'] and self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
-               fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], self.LOGWRN)
+            pgrec = self.pgget("dataset", "dsid, backflag, pid", "dsid = '{}'".format(dsid), self.LGWNEX)
+            if pgrec: pgrecs.append(pgrec)
       else:
-         dcnd = "ORDER BY dsid"
-         pgrecs = self.pgmget("dataset", "dsid, backflag, pid", dcnd, self.LGWNEX)
-         dcnt = len(pgrecs['dsid']) if pgrecs else 0
-         for i in range(dcnt):
-            dsid = pgrecs['dsid'][i]
-            if unlock and pgrecs['pid'][i] and self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
-            fcnt += self.get_dataset_files(dsid, dsfiles, pgrecs['backflag'][i])
+         mrecs = self.pgmget("dataset", "dsid, backflag, pid", "ORDER BY dsid", self.LGWNEX)
+         dcnt = len(mrecs['dsid']) if mrecs else 0
+         pgrecs = [self.onerecord(mrecs, i) for i in range(dcnt)]
+      for pgrec in pgrecs:
+         dsid = pgrec['dsid']
+         if unlock and pgrec['pid'] and self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
+         fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact)
       if dsfiles:
          s = 's' if fcnt > 1 else ''
          bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup' 
@@ -1013,28 +1054,21 @@ class DsQuasar(PgCMD, PgSplit):
 
    # gather all available backup file records with status N to backup
    def gather_dataset_infiles(self, dsfiles):
-      icnt = fcnt = cnt = 0
+      icnt = fcnt = 0
       bcnd = "status = 'N'"
-      ocnd = " ORDER BY dsid"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, dsids, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
       if self.dsids:
-         for dsid in self.dsids:
-            dcnd = "dsid = '{}' AND {}".format(dsid, bcnd)
-            pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
-            bcnt = len(pgrecs['bid']) if pgrecs else 0
-            for i in range(bcnt):
-               cnt = self.get_backup_infile(dsfiles, self.onerecord(pgrecs, i))
-               if cnt:
-                  icnt +=1
-                  fcnt += cnt
+         cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         pgrecs = self.pgmget("bfile", flds, bcnd+ocnd, self.LGWNEX)
+         cnds = [bcnd + " ORDER BY dsid"]
+      for dcnd in cnds:
+         pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0
          for i in range(bcnt):
             cnt = self.get_backup_infile(dsfiles, self.onerecord(pgrecs, i))
             if cnt:
-               icnt +=1
+               icnt += 1
                fcnt += cnt
       if dsfiles:
          s = 's' if icnt > 1 else ''
@@ -1045,28 +1079,21 @@ class DsQuasar(PgCMD, PgSplit):
    # gather all available backup file records with status T to backup
    #
    def gather_dataset_tarfiles(self, dsfiles):
-      tcnt = fcnt = cnt = 0
+      tcnt = fcnt = 0
       bcnd = "status = 'T'"
-      ocnd = " ORDER BY dsid"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
       if self.dsids:
-         for dsid in self.dsids:
-            dcnd = "dsid = '{}' AND {}".format(dsid, bcnd)
-            pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
-            bcnt = len(pgrecs['bid']) if pgrecs else 0
-            for i in range(bcnt):
-               cnt = self.get_backup_tarfile(dsfiles, self.onerecord(pgrecs, i))
-               if cnt:
-                  tcnt +=1
-                  fcnt += cnt
+         cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         pgrecs = self.pgmget("bfile", flds, bcnd+ocnd, self.LGWNEX)
+         cnds = [bcnd + " ORDER BY dsid"]
+      for dcnd in cnds:
+         pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0
          for i in range(bcnt):
             cnt = self.get_backup_tarfile(dsfiles, self.onerecord(pgrecs, i))
             if cnt:
-               tcnt +=1
+               tcnt += 1
                fcnt += cnt
       s = 's' if tcnt > 1 else ''
       bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup' 
@@ -1092,7 +1119,6 @@ class DsQuasar(PgCMD, PgSplit):
       if self.PGBACK['action']&self.CINACT: ret = fcnt
       if not dsfiles: return ret
       dsids = [dsid]
-   #   if not (pgrec['note'] or self.rebuild_file_note(pgrec, dsids)): return 0
       if not pgrec['note']:
          return self.pglog(bfile + ": Miss note for N backup file", self.ERRACT)
       infiles = []
@@ -1147,7 +1173,6 @@ class DsQuasar(PgCMD, PgSplit):
       if self.PGBACK['action']&self.CINACT: ret = fcnt
       if not dsfiles: return ret
       dsids = [dsid]
-   #   if not (pgrec['note'] or self.rebuild_file_note(pgrec, dsids)): return 0
       if not pgrec['note']:
          return self.pglog(bfile + ": Miss note for T backup file", self.ERRACT)
       ftype = None
@@ -1347,6 +1372,9 @@ class DsQuasar(PgCMD, PgSplit):
          binfo = bfiles[bid]
          for bkey in binfo: qinfo[bkey] = binfo[bkey]
          self.process_one_quasar_pathfile(qinfo)
+      if self.PGBACK['mproc'] > 1:
+         self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
+         self.confirm_quasar_counts(qinfo, list(bfiles), "bfile LIKE 'G%/%.tar'")   # recount confirmed renames from RDADB
       qcnt = qinfo['qcnt']
       if qcnt > 0:
          s = 's' if qcnt > 1 else ''
@@ -1671,43 +1699,6 @@ class DsQuasar(PgCMD, PgSplit):
       dsfiles[pgrec['type']][pgrec['bid']] = {'note' : pgrec['note'], 'fcnt' : pgrec['fcnt'], 'size' : pgrec['size'],
                                               'date' : pgrec['date_modified'], 'time' : pgrec['time_modified']}
 
-   # rebuild missed file note 
-   def rebuild_file_note(self, pgrec, dsids):
-      bid = pgrec['bid']
-      fields = 'file, dsid, type, data_size, checksum'
-      bfiles = {dsids[0] : {'S' : [], 'W' : []}}
-      pgrecs = self.pgmget('sfile', 's' + fields, "bid = {} ORDER BY dsid, sfile".format(bid), self.LGEREX)
-      cnt = len(pgrecs['sfile']) if pgrecs else 0
-      for i in range(cnt):
-         dsid = pgrecs['dsid'][i]
-         if dsid not in dsids:
-            dsids.append(dsid)
-            bfiles[dsid] = {'S' : [], 'W' : []}
-         bfiles[dsid]['S'].append([pgrecs['sfile'][i], pgrecs['type'][i], pgrecs['data_size'][i], pgrecs['checksum'][i]])
-      pgrecs = self.pgmget('wfile', 'w' + fields, "bid = {} ORDER BY dsid, wfile".format(bid), self.LGEREX)
-      cnt = len(pgrecs['wfile']) if pgrecs else 0
-      for i in range(cnt):
-         dsid = pgrecs['dsid'][i]
-         if dsid not in dsids:
-            dsids.append(dsid)
-            bfiles[dsid] = {'S' : [], 'W' : []}
-         bfiles[dsid]['W'].append([pgrecs['wfile'][i], pgrecs['type'][i], pgrecs['data_size'][i], pgrecs['checksum'][i]])
-      # create note
-      note = ''
-      for dsid in bfiles:
-         for ftype in bfiles[dsid]:
-            files = bfiles[dsid][ftype]
-            if not files: continue
-            note += "<{}_{}_{}.txt>\n".format(dsid, ftype, bid)
-            note += "DS<=>{}\n{}F<:>{}T<:>SZ<:>MC<:>\n".format(dsid, ftype, ftype)
-            for flist in files:
-               note += "{}<:>{}<:>{}<:>{}<:>\n".format(flist[0], flist[1], flist[2], flist[3])
-      if note:
-         self.pgexec("UPDATE bfile SET note = '{}' WHERE bid = {}".format(note, bid), self.LGEREX)
-         pgrec['note'] = note
-         return 1
-      return 0
-
    # dump statistics for GDEX files available to create input files
    def dump_dataset_files(self, dsfiles, backflag):
       bfiles = dsfiles[backflag]
@@ -1922,7 +1913,7 @@ class DsQuasar(PgCMD, PgSplit):
             pcnt += 1
       return pcnt
 
-# main function to excecute this script
+# main function to execute this script
 def main():
    object = DsQuasar()
    object.read_parameters()
