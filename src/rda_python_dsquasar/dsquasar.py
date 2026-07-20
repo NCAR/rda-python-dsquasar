@@ -340,12 +340,22 @@ class DsQuasar(PgCMD, PgSplit):
          # invocation argv is left unchanged so a repeat submit with the same argv still
          # blocks as a duplicate. a command-line or the PBS batch run does not set qoptions.
          if self.PGLOG['CURBID'] < 1 and (act == self.STTACT or acts&self.NBACTS != acts):
-            qoptions = '-l walltime=24:00:00'
-            if acts&self.NBACTS != acts:
-               if self.PGBACK['mproc'] < 2: self.PGBACK['mproc'] = self.batch_process_count(acts)
-               if self.PGBACK['mproc'] > 1:
-                  qoptions += ",select=1:ncpus={0}:mem={0}gb".format(self.PGBACK['mproc'])
-            self.set_one_boption('qoptions', qoptions, 1)
+            # check for a duplicate command first (same lookup key init_dscheck builds);
+            # only size up multi-processing - which checks the backup files - when no
+            # matching dscheck record is on file yet, so a duplicate submit blocks without
+            # checking the backup files.
+            dargv = self.argv_to_string(sys.argv[1:], 0, "Process in Delayed Mode")
+            dargx = None
+            if len(dargv) > 100:
+               dargx = dargv[100:]
+               dargv = dargv[0:100]
+            if not self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN):
+               qoptions = '-l walltime=24:00:00'
+               if acts&self.NBACTS != acts:
+                  if self.PGBACK['mproc'] < 2: self.PGBACK['mproc'] = self.batch_process_count(acts)
+                  if self.PGBACK['mproc'] > 1:
+                     qoptions += ",select=1:ncpus={0}:mem={0}gb".format(self.PGBACK['mproc'])
+               self.set_one_boption('qoptions', qoptions, 1)
          self.init_dscheck(0, '', "dsquasar", dsid, cact, self.PGBACK['workdir'],
                             self.PGLOG['CURUID'], self.bopts, self.LOGWRN)
          # on the PBS batch run, take the process count from the reserved ncpus in qoptions
