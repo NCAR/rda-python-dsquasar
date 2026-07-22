@@ -84,7 +84,7 @@ class DsQuasar(PgCMD, PgSplit):
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
       self.TFCOUNT = 100          # if file count is greater, use self.MINSIZE for tar file
       self.SUBLMTS = 2000         # file count limit for a sub-group
-      self.MPLIMIT = 1000000      # detail file count per batch process for multi-processing
+      self.MPLIMIT = 500          # tar file count per batch process for multi-processing
       self.MPMAX = 8              # maximum number of batch processes for multi-processing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
@@ -315,17 +315,36 @@ class DsQuasar(PgCMD, PgSplit):
          self.backup_dataset_tarfiles(dsfiles, 'B')
          self.backup_dataset_tarfiles(dsfiles, 'D')
 
-   # size up the number of batch processes from the detail file count for the
-   # backup actions; scales one process per MPLIMIT files, capped at MPMAX
+   # size up the number of batch processes from the number of tar files that are the
+   # unit of parallel work: new infiles CINACT will create this run (estimated from the
+   # total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
+   # status 'N' infile records to build (TARACT) and status 'T' tar records to transfer
+   # (BCKACT). scales one process per MPLIMIT tar files, capped at MPMAX. create-infile
+   # only (-A 1) is not a batch action (see NBACTS) so it never reaches here and stays
+   # single process.
    def batch_process_count(self, acts):
-      fcnt = 0
-      if acts&self.CINACT: fcnt += self.gather_dataset_files(None)
-      if acts&self.TARACT: fcnt += self.gather_dataset_infiles(None)
-      if acts&self.BCKACT: fcnt += self.gather_dataset_tarfiles(None)
-      if fcnt <= self.MPLIMIT: return 1
-      mproc = (fcnt + self.MPLIMIT - 1)//self.MPLIMIT
+      tcnt = 0
+      if acts&self.CINACT:
+         sizes = [0]
+         if self.gather_dataset_files(None, False, sizes):
+            tcnt += max(1, (sizes[0] + self.TARSIZE - 1)//self.TARSIZE)
+      if acts&self.TARACT: tcnt += self.batch_tar_count('N')
+      if acts&self.BCKACT: tcnt += self.batch_tar_count('T')
+      if tcnt <= self.MPLIMIT: return 1
+      mproc = (tcnt + self.MPLIMIT - 1)//self.MPLIMIT
       if mproc > self.MPMAX: mproc = self.MPMAX
       return mproc
+
+   # count the bfile tar records of a given status honoring backflag/dataset scope
+   def batch_tar_count(self, status):
+      bcnd = "status = '{}'".format(status)
+      if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      if self.dsids:
+         tcnt = 0
+         for dsid in self.dsids:
+            tcnt += self.pgget('bfile', '', "dsid = '{}' AND {}".format(dsid, bcnd), self.LGWNEX)
+         return tcnt
+      return self.pgget('bfile', '', bcnd, self.LGWNEX)
 
    # start none daemon and intialize dscheck counts
    def start_dsquasar_none_daemon(self, act, fcnt = 0):
@@ -830,7 +849,7 @@ class DsQuasar(PgCMD, PgSplit):
       return {'wcount' : 0, 'wrecs' : [], 'scount' : 0, 'srecs' : []}
 
    # get all files need to be backed up for a given dataset ID
-   def get_dataset_files(self, dsid, dsfiles, backflag, logact = 0):
+   def get_dataset_files(self, dsid, dsfiles, backflag, logact = 0, sizes = None):
       dcnd = "dsid = '{}'".format(dsid)
       fopt = self.get_backup_options(dsid, dcnd)
       if not fopt:
@@ -870,6 +889,7 @@ class DsQuasar(PgCMD, PgSplit):
                self.pglog("{}-G{}: Found {} Files ({})".format(dsid, gidx, rcnt, rmsg), self.LOGWRN)
    
       fcnt = cnts['B'][0] + cnts['D'][0]
+      if sizes is not None: sizes[0] += cnts['B'][1] + cnts['D'][1]
       if dsfiles:
          cmsg = 'Changed ' if self.PGBACK['chgdays'] else ''
          for bflg in dsfiles:
@@ -1038,7 +1058,7 @@ class DsQuasar(PgCMD, PgSplit):
       return fopt
 
    # gather all available dataset ids to backup data files
-   def gather_dataset_files(self, dsfiles, unlock = True):
+   def gather_dataset_files(self, dsfiles, unlock = True, sizes = None):
       fcnt = 0
       # warn per named dataset with no files; stay silent when scanning all datasets
       logact = self.LOGWRN if self.dsids else 0
@@ -1054,7 +1074,7 @@ class DsQuasar(PgCMD, PgSplit):
       for pgrec in pgrecs:
          dsid = pgrec['dsid']
          if unlock and pgrec['pid'] and self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
-         fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact)
+         fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact, sizes)
       if dsfiles:
          s = 's' if fcnt > 1 else ''
          bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup' 
