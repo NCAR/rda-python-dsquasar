@@ -86,6 +86,8 @@ class DsQuasar(PgCMD, PgSplit):
       self.SUBLMTS = 2000         # file count limit for a sub-group
       self.MPLIMIT = 500          # tar file count per batch process for multi-processing
       self.MPMAX = 8              # maximum number of batch processes for multi-processing
+      self.MAXRUNTIME = 23*3600   # 23 hours; stop before the 24-hour PBS walltime
+      self.ONEHOUR = 3600         # seconds; time headroom needed to finish before walltime
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -99,6 +101,8 @@ class DsQuasar(PgCMD, PgSplit):
          'maxcnt' : 10,
          'dolock' : 1,
          'doemail' : 0,
+         'starttime' : 0,   # wall-clock start of the run, for the PBS walltime guard
+         'tardone' : 0,     # tar files dispatched so far, for the finish-rate estimate
          'cmd'  : None
       }
       self.dsids = []
@@ -159,6 +163,7 @@ class DsQuasar(PgCMD, PgSplit):
    # do quasar backup process
    def start_actions(self):
       self.cmdlog(self.PGBACK['cmd'])
+      self.PGBACK['starttime'] = tm()
       if self.sopts['u']:
          if self.sopts['a']: self.pglog("-u: Dataset IDs must be provided to Unlock datasets", self.LOGWRN)
          self.unlock_datasets()
@@ -614,6 +619,42 @@ class DsQuasar(PgCMD, PgSplit):
       if self.PGBACK['pstep']: self.record_dscheck_status("F")
       self.pgexit(0)
 
+   # guard the -A 3 (Create Input&Tar, build status 'N' infiles) and -A 4 (Transfer,
+   # send status 'T' tars) PBS batch jobs against the 24-hour walltime: once past
+   # MAXRUNTIME, if the tar files still to process cannot finish within the last hour at
+   # the rate achieved so far, send a progress email and stop cleanly so the report is
+   # not lost to a PBS timeout; the remaining records are left for the next scheduled run
+   # to resume. a no-op for command-line runs, other actions, or before the cutoff.
+   def check_batch_deadline(self, qinfo):
+      act = self.PGBACK['action']
+      if self.PGLOG['CURBID'] < 1 or act not in (self.CTACTS, self.BCKACT): return
+      elapsed = tm() - self.PGBACK['starttime']
+      if elapsed < self.MAXRUNTIME: return
+      status, work = ('N', 'build') if act == self.CTACTS else ('T', 'transfer')
+      remaining = self.batch_tar_count(status)
+      if remaining < 1: return
+      done = self.PGBACK['tardone']
+      need = remaining*elapsed/done if done > 0 else elapsed
+      if need <= self.ONEHOUR: return   # enough time left to finish before the walltime
+      if self.PGBACK['mproc'] > 1: self.check_child(None, 0, self.LOGWRN, 1)   # wait all children
+      if qinfo and qinfo.get('dslocks'):
+         for dsid in qinfo['dslocks']: self.lock_dataset(dsid, 0, self.LGEREX)
+      etime = self.seconds_to_string_time(int(elapsed))
+      amsg = self.ACTMSG[act]
+      msg = "{}: Stopped after {} with {} tar file(s) still to {} - not enough time to finish before the 24-hour PBS walltime; the next scheduled run will resume".format(amsg, etime, remaining, work)
+      self.pglog(self.INDENT + msg, self.LOGACT)
+      if self.PGBACK['doemail']:
+         bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
+         self.set_email("{}: {} - stopped early before the PBS walltime with {} {} tar file(s) remaining!".format(self.PGBACK['cmd'], amsg, remaining, bmsg), self.EMLTOP)
+         title = "dsquasar: {} stopped early ({} remaining)".format(amsg, remaining)
+         if self.PGBACK['errcnt']: title += " Error({})".format(self.PGBACK['errcnt'])
+         if self.PGLOG['DSCHECK']:
+            self.build_customized_email("dscheck", "einfo", "cindex = {}".format(self.PGLOG['DSCHECK']['cindex']), title, self.LOGWRN)
+         else:
+            self.pglog(title, self.LOGWRN|self.SNDEML)
+      if self.PGBACK['pstep']: self.record_dscheck_status("D")
+      self.pgexit(0)
+
    # recompute the confirmed backup counts from RDADB after all child processes
    # finished, so a multi-process summary reflects succeeded (not just started) work
    def confirm_quasar_counts(self, qinfo, bids, dcnd):
@@ -638,6 +679,7 @@ class DsQuasar(PgCMD, PgSplit):
    def process_one_backup_file(self, qinfo, addback, keepid = False):
       ccnt = self.check_child(None, 0, self.LOGWRN, -1) if self.PGBACK['mproc'] > 1 else 0
       if self.PGSIG['QUIT']: self.quit_dsquasar(qinfo)
+      self.check_batch_deadline(qinfo)
       dsids = qinfo['dsids']
       dcnt = len(dsids)
       if dcnt == 0: return
@@ -695,12 +737,13 @@ class DsQuasar(PgCMD, PgSplit):
       if stat:
          # reset qinfo after quasar backup
          qinfo['qcnt'] += 1
+         self.PGBACK['tardone'] += 1   # cumulative dispatched tars for the walltime finish-rate
          qinfo['qfcnt'] += fcnt
          qinfo['qsize'] += fsize
          for dsid in dsids:
             if dsid not in qinfo['qdsids']: qinfo['qdsids'].append(dsid)
       if addback:
-         lastdsid = dsids.pop() if keepid else None         
+         lastdsid = dsids.pop() if keepid else None
          for dsid in dsids:  # unlock all datasets but the last one
             if dsid in qinfo['dslocks']:
                self.lock_dataset(dsid, 0, self.LGEREX)
@@ -717,6 +760,7 @@ class DsQuasar(PgCMD, PgSplit):
    def transfer_quasar_tarfiles(self, qinfo):
       ccnt = self.check_child(None, 0, self.LOGWRN, -1) if self.PGBACK['mproc'] > 1 else 0
       if self.PGSIG['QUIT']: self.quit_dsquasar(qinfo)
+      self.check_batch_deadline(qinfo)
       # prepare for backup one tar file
       dsids = qinfo['dsids']
       bids = qinfo['bids']
@@ -770,6 +814,7 @@ class DsQuasar(PgCMD, PgSplit):
       if dstat and bstat:
          # reset qinfo after quasar backup
          qinfo['qcnt'] += bcnt
+         self.PGBACK['tardone'] += bcnt   # cumulative transferred tars for the walltime finish-rate
          qinfo['qfcnt'] += fcnt
          qinfo['qsize'] += fsize
          for dsid in dsids:
