@@ -1,0 +1,128 @@
+
+ Name: dsquasar - back up RDA/GDEX data archives onto the Quasar backup servers
+
+ Check the Backup flags set in dataset.backflag and/or dsgroup.backflag of RDADB
+ to gather Web and Saved files, tar them into larger (>= 2GB) backup files, and
+ back them up onto the NCAR GDEX Quasar Globus end points, for a Backup copy
+ (gdex-quasar) and/or a disaster-recovery Drdata copy (gdex-quasar-drdata).  The
+ file tarring and transferring is performed through the utility program dsarch.
+
+ Usage: dsquasar [-b] [(-a | -t DatasetIDs)] [-c ChangeDays] [-(e|E)]     \
+                 [-(B|D)] [-A ActionBits] [-l (Y|N)] [-m ProcessCount]    \
+                 [-n] [-u] [-d [HostName] [TryCount]] [-h]
+
+   Either -a or -t must be given (usage is displayed otherwise).  dsquasar runs
+   from the Quasar backup work directory; it changes there automatically.
+
+
+ DATASET SELECTION
+
+   -a     Gather files of all datasets that have a Backup flag set.
+
+   -t  DatasetIDs
+          One or more dataset IDs whose files are backed up.  The SQL wildcard
+          '%' is allowed and is expanded against the dataset table.  Ignored,
+          with a warning, when -a is also given.
+
+
+ BACKUP SCOPE
+
+   -B     Quasar Backup only (endpoint gdex-quasar) for the given datasets.
+
+   -D     Quasar Backup & Drdata (gdex-quasar and gdex-quasar-drdata).
+
+          -B and -D are mutually exclusive; the default (neither given) backs up
+          to both the Backup and the Drdata endpoints.
+
+   -c  ChangeDays
+          Used with -A 1 to re-back up files that changed within the given
+          number of days.  Must be greater than 0.
+
+
+ ACTIONS
+
+   -A  ActionBits
+          Bit flags selecting the actions to perform; the valid values are
+          1, 2, 3, 4, 6, 7, 8, 16 and it defaults to 3 (actions 1 + 2):
+
+             1  - create the dsarch input Save/Web file lists and add the
+                  backup file (bfile) placeholder records (status 'N').
+             2  - build tar files (each >= 5GB where possible) from the Saved/
+                  Web files listed in the input files (status 'N' -> 'T').
+             4  - transfer the built tar files (batched to >= 90GB per Globus
+                  transfer) to the Quasar backup end points (status 'T' -> 'A').
+             8  - check file sizes between RDADB and the Quasar servers, and
+                  reset status to 'N' when they differ.
+            16  - dump backup statistics for files backed up and files that are
+                  ready to be backed up.
+
+          Combined values: 3 = 1+2, 6 = 2+4, 7 = 1+2+4.
+
+
+ RUN CONTROL
+
+   -b     Turn on background mode; no screen display.
+
+   -d  [HostName] [TryCount]
+          Turn on delay mode to run as a batch job.  A dscheck record is created
+          and the dscheck daemon later submits the job to PBS.  On the initial
+          submit dsquasar sizes multi-processing from the detail file count and
+          reserves matching PBS cpus (walltime + select=1:ncpus=N:mem=Ngb) in the
+          dscheck qoptions; the invocation arguments are left unchanged so a
+          repeat submit with the same arguments still blocks as a duplicate.
+
+   -l  (Y|N)
+          Whether to check and lock a dataset before backing it up.  Defaults
+          to Y.
+
+   -m  ProcessCount
+          Number of concurrent child processes.  Defaults to 1.  In delay mode
+          the process count travels through the reserved PBS cpus rather than
+          the command line.
+
+   -n     Gather and show the available file counts only; no backup actions are
+          performed.
+
+   -u     Clean up (unlock) backup locks for the given dataset IDs.  Dataset IDs
+          must be provided (not valid with -a).
+
+
+ EMAIL
+
+   -e     Send an email to the specialist with backup statistics.
+
+   -E     Send an email to the specialist with detailed backup statistics.
+
+
+ MISCELLANEOUS
+
+   -h     Display this help document.
+
+
+ EXAMPLES
+
+   1. Back up (create input files and tar files for) all flagged datasets:
+
+         dsquasar -a -A 3
+
+   2. Transfer built tar files of one dataset to both Quasar end points:
+
+         dsquasar -t d123456 -A 4
+
+   3. Show the counts of files ready to back up for a dataset, without acting:
+
+         dsquasar -t d123456 -n
+
+   4. Dump backup statistics for all datasets by email:
+
+         dsquasar -a -A 16 -e
+
+   5. Queue a delayed PBS batch job to create input files and tar files for all
+      datasets in the background (as run from cron); multi-processing is sized
+      automatically from the file count:
+
+         dsquasar -a -A 3 -e -b -d PBS
+
+   6. Unlock backup locks left on datasets:
+
+         dsquasar -t d123456 -u
