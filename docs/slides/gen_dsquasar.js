@@ -256,13 +256,12 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     }
     x += cw+gap;
   });
-  s.addText([
-    { text:"-A 1", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:"                                   ", options:{} },
-    { text:"-A 2", options:{ fontFace:MONO, bold:true, color:GREEN } },
-    { text:"                                   ", options:{} },
-    { text:"-A 4", options:{ fontFace:MONO, bold:true, color:AMBER } },
-  ], { x:2.0, y:4.75, w:9.5, h:0.35, fontFace:MONO, fontSize:14, margin:0, align:"center" });
+  // one label per arrow, centred on the gap between the stage cards
+  [["-A 1", DEEP], ["-A 2", GREEN], ["-A 4", AMBER]].forEach(([lbl, col], i) => {
+    const ac = 0.62 + cw + 0.02 + (gap-0.04)/2 + i*(cw+gap);   // arrow centre
+    s.addText(lbl, { x:ac-0.6, y:4.75, w:1.2, h:0.35, align:"center",
+      fontFace:MONO, bold:true, fontSize:14, color:col, margin:0 });
+  });
   s.addShape(p.ShapeType.roundRect, { x:0.55, y:5.35, w:12.25, h:1.35, rectRadius:0.1,
     fill:{color:TINT2}, line:{color:LINE, width:1} });
   circ(s, 0.8, 5.62, 0.8, DEEP, "\u2318", LIGHT, 22);
@@ -564,11 +563,12 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       valign:"middle", fontFace:SANS, fontSize:26, bold:true, color:st[3], margin:0 });
     x += 3.7;
   });
-  s.addText([
-    { text:"-A 2 / -A 3", options:{ fontFace:MONO, bold:true, color:GREEN } },
-    { text:"                                ", options:{} },
-    { text:"-A 4", options:{ fontFace:MONO, bold:true, color:AMBER } },
-  ], { x:2.5, y:3.65, w:8.5, h:0.35, fontFace:MONO, fontSize:13, margin:0, align:"center" });
+  // one label per arrow, centred on the gap between the status cards
+  [["-A 2 / -A 3", GREEN], ["-A 4", AMBER]].forEach(([lbl, col], i) => {
+    const ac = 1.35 + 3.1 + 0.3 + i*3.7;   // arrow centre
+    s.addText(lbl, { x:ac-1.0, y:3.65, w:2.0, h:0.35, align:"center",
+      fontFace:MONO, bold:true, fontSize:13, color:col, margin:0 });
+  });
 
   s.addText("Records also move backwards \u2014 that is the self-healing part", {
     x:0.5, y:4.15, w:12.3, h:0.35, fontFace:SANS, bold:true, fontSize:15,
