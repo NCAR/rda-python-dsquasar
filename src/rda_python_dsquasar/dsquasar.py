@@ -84,8 +84,15 @@ class DsQuasar(PgCMD, PgSplit):
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
       self.TFCOUNT = 100          # if file count is greater, use self.MINSIZE for tar file
       self.SUBLMTS = 2000         # file count limit for a sub-group
-      self.MPLIMIT = 500          # tar file count per batch process for multi-processing
-      self.MPMAX = 8              # maximum number of batch processes for multi-processing
+      # tarring (TARACT) forks one child per tar file, so its parallel unit is the tar
+      # file: use a small per-process limit and a high cap to spread the work widely.
+      self.MPTLIMIT = 200         # tar file count per batch process for tarring
+      self.MPTMAX = 12            # maximum number of batch processes for tarring
+      # uploading (BCKACT) forks one child per BCKSIZE transfer batch (~BCKSIZE/TARSIZE
+      # tar files each), so far fewer parallel units than tar files: use a large
+      # per-process limit and a low cap to avoid over-reserving cpus.
+      self.MPBLIMIT = 900         # tar file count per batch process for uploading
+      self.MPBMAX = 4             # maximum number of batch processes for uploading
       self.MAXRUNTIME = 23*3600   # 23 hours; stop before the 24-hour PBS walltime
       self.ONEHOUR = 3600         # seconds; time headroom needed to finish before walltime
       self.PGBACK = {
@@ -320,24 +327,35 @@ class DsQuasar(PgCMD, PgSplit):
          self.backup_dataset_tarfiles(dsfiles, 'B')
          self.backup_dataset_tarfiles(dsfiles, 'D')
 
-   # size up the number of batch processes from the number of tar files that are the
-   # unit of parallel work: new infiles CINACT will create this run (estimated from the
-   # total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
-   # status 'N' infile records to build (TARACT) and status 'T' tar records to transfer
-   # (BCKACT). scales one process per MPLIMIT tar files, capped at MPMAX. create-infile
-   # only (-A 1) is not a batch action (see NBACTS) so it never reaches here and stays
-   # single process.
+   # size up the number of batch processes to reserve, sizing tarring and uploading
+   # independently because their parallel work units differ. tarring's unit is the tar
+   # file (one child per tar): new infiles CINACT will create this run (estimated from
+   # the total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
+   # status 'N' infile records to build (TARACT), scaled one process per MPTLIMIT tar
+   # files, capped at MPTMAX. uploading's unit is the BCKSIZE transfer batch (one child
+   # per ~BCKSIZE/TARSIZE tar files): existing status 'T' tar records to transfer
+   # (BCKACT), scaled one process per MPBLIMIT tar files, capped at MPBMAX. the phases
+   # run sequentially in one run and share a single reserved ncpus, so return the max of
+   # the two counts. create-infile only (-A 1) is not a batch action (see NBACTS) so it
+   # never reaches here and stays single process.
    def batch_process_count(self, acts):
+      mproc = 1
       tcnt = 0
       if acts&self.CINACT:
          sizes = [0]
          if self.gather_dataset_files(None, False, sizes):
             tcnt += max(1, (sizes[0] + self.TARSIZE - 1)//self.TARSIZE)
       if acts&self.TARACT: tcnt += self.batch_tar_count('N')
-      if acts&self.BCKACT: tcnt += self.batch_tar_count('T')
-      if tcnt <= self.MPLIMIT: return 1
-      mproc = (tcnt + self.MPLIMIT - 1)//self.MPLIMIT
-      if mproc > self.MPMAX: mproc = self.MPMAX
+      if tcnt > self.MPTLIMIT:
+         tproc = (tcnt + self.MPTLIMIT - 1)//self.MPTLIMIT
+         if tproc > self.MPTMAX: tproc = self.MPTMAX
+         if tproc > mproc: mproc = tproc
+      if acts&self.BCKACT:
+         bcnt = self.batch_tar_count('T')
+         if bcnt > self.MPBLIMIT:
+            bproc = (bcnt + self.MPBLIMIT - 1)//self.MPBLIMIT
+            if bproc > self.MPBMAX: bproc = self.MPBMAX
+            if bproc > mproc: mproc = bproc
       return mproc
 
    # count the bfile tar records of a given status honoring backflag/dataset scope
