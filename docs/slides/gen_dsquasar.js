@@ -132,11 +132,11 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     x:0.75, y:3.85, w:4.9, h:0.4, fontFace:SANS, bold:true, fontSize:14,
     color:DEEP, margin:0 });
   s.addText([
-    { text:"Nothing is configured per run: ", options:{} },
+    { text:"Nothing is configured per run: a dataset joins the backup when ", options:{} },
     { text:"dataset.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" and ", options:{} },
+    { text:" is set, and ", options:{} },
     { text:"dsgroup.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" say what to back up.", options:{} },
+    { text:" refines it per group.", options:{} },
     { text:"\nAny file with ", options:{} },
     { text:"bid = 0", options:{ fontFace:MONO, bold:true, color:DEEP } },
     { text:" is not backed up yet and is picked up automatically.", options:{} },
@@ -421,22 +421,30 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 (() => {
   const s = p.addSlide(); s.background = { color: LIGHT };
   kicker(s, "Backup scope", TEAL); title(s, "Backup Flags: What Gets Two Copies");
-  // left: flag table
-  reftable(s, 0.5, 1.7, 6.05, [1.15,4.9], [
+  // left: the enrolling field, then the flag table
+  s.addText([
+    { text:"A dataset is put under Quasar backup by setting ", options:{} },
+    { text:"dataset.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:". That one field is the switch \u2014 dsquasar reads it for every dataset it visits, and nothing else enrolls a dataset.", options:{} },
+  ], { x:0.5, y:1.62, w:6.05, h:0.72, fontFace:SANS, fontSize:13, color:INK,
+       margin:0, valign:"top", lineSpacingMultiple:1.08 });
+  reftable(s, 0.5, 2.4, 6.05, [1.15,4.9], [
     ["'B'","Quasar Backup only \u2014 endpoint gdex-quasar"],
     ["'D'","Backup + Drdata \u2014 also gdex-quasar-drdata"],
     ["'N'","Not backed up at all"],
     ["'P'","Group level only: inherit the dataset's flag"],
-  ], ["Flag","Meaning in dataset.backflag / dsgroup.backflag"], DEEP);
+  ], ["Flag","Value in dataset.backflag / dsgroup.backflag"], DEEP);
   s.addText([
-    { text:"Group flags win.  ", options:{ bold:true, color:DEEP } },
-    { text:"If any top-level ", options:{} },
+    { text:"Group flags refine, they do not enroll.  ", options:{ bold:true, color:DEEP } },
+    { text:"Once the dataset flag is set, any top-level ", options:{} },
     { text:"dsgroup", options:{ fontFace:MONO, bold:true } },
-    { text:" carries its own flag, dsquasar walks the dataset group by group and applies each group's flag; groups flagged ", options:{} },
+    { text:" carrying its own flag is applied group by group \u2014 ", options:{} },
+    { text:"'P'", options:{ fontFace:MONO, bold:true } },
+    { text:" inherits the dataset flag, ", options:{} },
     { text:"'N'", options:{ fontFace:MONO, bold:true } },
-    { text:" are skipped. A dataset with no group flags is treated as one unit.", options:{} },
-  ], { x:0.5, y:4.05, w:6.05, h:1.35, fontFace:SANS, fontSize:13, color:INK,
-       margin:0, valign:"top", lineSpacingMultiple:1.1 });
+    { text:" excludes the group. A dataset with no group flags is one unit.", options:{} },
+  ], { x:0.5, y:4.2, w:6.05, h:1.25, fontFace:SANS, fontSize:12.5, color:INK,
+       margin:0, valign:"top", lineSpacingMultiple:1.08 });
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.5, w:6.05, h:1.15, rectRadius:0.1,
     fill:{color:TINT}, line:{color:LINE, width:1} });
   s.addText([
@@ -1330,7 +1338,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   kicker(s, "Wrap Up", TEAL);
   title(s, "Six Things Worth Remembering");
   const pts = [
-    ["Flags decide, not you", "Backup flags on the dataset and group records choose what is gathered. -t narrows the run; it does not override a flag.", DEEP],
+    ["dataset.backflag enrolls", "Setting that one field puts a dataset under backup; dsgroup.backflag refines it. -t narrows a run, it does not override a flag.", DEEP],
     ["-A 3 is the working default", "Create the input lists and build the tars in one pass. -A 4 ships them. -A 7 does both.", TEAL],
     ["Status is the whole story", "N listed, T tarred, A archived. Backwards moves are deliberate and simply requeue the work.", GREEN],
     ["Tar size is the economics", "5 GB target tars batched into 90 GB transfers is what makes tape and Globus efficient.", AMBER],
