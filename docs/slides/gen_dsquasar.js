@@ -426,9 +426,9 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"A dataset is put under Quasar backup by setting ", options:{} },
     { text:"dataset.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
     { text:". That one field is the switch \u2014 dsquasar reads it for every dataset it visits, and nothing else enrolls a dataset.", options:{} },
-  ], { x:0.5, y:1.62, w:6.05, h:0.72, fontFace:SANS, fontSize:13, color:INK,
+  ], { x:0.5, y:1.6, w:6.05, h:0.68, fontFace:SANS, fontSize:13, color:INK,
        margin:0, valign:"top", lineSpacingMultiple:1.08 });
-  reftable(s, 0.5, 2.4, 6.05, [1.15,4.9], [
+  reftable(s, 0.5, 2.32, 6.05, [1.15,4.9], [
     ["'B'","Quasar Backup only \u2014 endpoint gdex-quasar"],
     ["'D'","Backup + Drdata \u2014 also gdex-quasar-drdata"],
     ["'N'","Not backed up at all"],
@@ -436,25 +436,37 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   ], ["Flag","Value in dataset.backflag / dsgroup.backflag"], DEEP);
   s.addText([
     { text:"Group flags refine, they do not enroll.  ", options:{ bold:true, color:DEEP } },
-    { text:"Once the dataset flag is set, any top-level ", options:{} },
+    { text:"Once the dataset flag is set, a top-level ", options:{} },
     { text:"dsgroup", options:{ fontFace:MONO, bold:true } },
-    { text:" carrying its own flag is applied group by group \u2014 ", options:{} },
+    { text:" with its own flag is applied group by group \u2014 ", options:{} },
     { text:"'P'", options:{ fontFace:MONO, bold:true } },
-    { text:" inherits the dataset flag, ", options:{} },
+    { text:" inherits, ", options:{} },
     { text:"'N'", options:{ fontFace:MONO, bold:true } },
-    { text:" excludes the group. A dataset with no group flags is one unit.", options:{} },
-  ], { x:0.5, y:4.2, w:6.05, h:1.25, fontFace:SANS, fontSize:12.5, color:INK,
-       margin:0, valign:"top", lineSpacingMultiple:1.08 });
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.5, w:6.05, h:1.15, rectRadius:0.1,
+    { text:" excludes.", options:{} },
+  ], { x:0.5, y:4.4, w:6.05, h:0.85, fontFace:SANS, fontSize:12, color:INK,
+       margin:0, valign:"top", lineSpacingMultiple:1.06 });
+  // how the flag is actually set
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.3, w:6.05, h:0.78, rectRadius:0.09,
     fill:{color:TINT}, line:{color:LINE, width:1} });
   s.addText([
-    { text:"Command-line override:  ", options:{ bold:true, color:DEEP } },
+    { text:"Set it in the web config tool:  ", options:{ bold:true, color:DEEP } },
+    { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
+      hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
+    { text:"\nunder ", options:{} },
+    { text:"DSARCH \u2192 Dataset Information", options:{ bold:true } },
+    { text:", where backflag is set or changed per dataset.", options:{} },
+  ], { x:0.72, y:5.3, w:5.6, h:0.78, fontFace:SANS, fontSize:11, color:INK,
+       margin:0, valign:"middle", lineSpacingMultiple:1.05 });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.14, w:6.05, h:0.5, rectRadius:0.08,
+    fill:{color:TINT2}, line:{color:LINE, width:1} });
+  s.addText([
+    { text:"Per-run override:  ", options:{ bold:true, color:DEEP } },
     { text:"-B", options:{ fontFace:MONO, bold:true } },
     { text:" or ", options:{} },
     { text:"-D", options:{ fontFace:MONO, bold:true } },
-    { text:" narrows a run to just that copy \u2014 they are mutually exclusive, and giving neither works on both.", options:{} },
-  ], { x:0.75, y:5.55, w:5.6, h:1.05, fontFace:SANS, fontSize:12.5, color:INK,
-       margin:0, valign:"middle", lineSpacingMultiple:1.08 });
+    { text:" narrows a run to one copy \u2014 mutually exclusive; neither means both.", options:{} },
+  ], { x:0.72, y:6.14, w:5.6, h:0.5, fontFace:SANS, fontSize:10.5, color:INK,
+       margin:0, valign:"middle" });
 
   // right: two endpoints diagram
   s.addShape(p.ShapeType.roundRect, { x:6.78, y:1.7, w:6.05, h:4.95, rectRadius:0.1,
@@ -1243,9 +1255,12 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.03 });
     px += 4.15;
   });
-  s.addText("All three are installed by the rda_python_dsquasar package and share the rda_python_common configuration.", {
-    x:0.5, y:6.58, w:12.35, h:0.3, fontFace:SANS, italic:true, fontSize:11,
-    color:MUTE, margin:0 });
+  s.addText([
+    { text:"All three are installed by the rda_python_dsquasar package and share the rda_python_common configuration.   Backup flags are edited at ", options:{ italic:true, color:MUTE } },
+    { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
+      hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
+    { text:"  (DSARCH \u2192 Dataset Information).", options:{ italic:true, color:MUTE } },
+  ], { x:0.5, y:6.58, w:12.35, h:0.3, fontFace:SANS, fontSize:11, margin:0 });
   foot(s);
 })();
 
