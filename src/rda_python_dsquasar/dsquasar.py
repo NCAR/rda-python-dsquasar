@@ -619,6 +619,29 @@ class DsQuasar(PgCMD, PgSplit):
       bfiles[dsid] = dsfiles[backflag][dsid]
       return bfiles[dsid]['scount'] + bfiles[dsid]['wcount']
 
+   # lock the other datasets whose files share one tar file, so that no other worker gathers
+   # or tars their files while this tar file is being claimed. datasets already locked by this
+   # run, including the primary one, are left alone. returns the datasets locked here, to be
+   # unlocked once the tar file is dispatched, or None if one of them is held by another
+   # worker, in which case nothing new is left locked and the tar file must wait for a later run
+   def lock_backup_datasets(self, qinfo, dsids):
+      dslocks = []
+      if not self.PGBACK['dolock']: return dslocks
+      for dsid in dsids:
+         if dsid in qinfo['dslocks']: continue
+         if self.lock_dataset(dsid, 1, self.LOGERR) < 1:
+            self.unlock_backup_datasets(qinfo, dslocks)
+            return None
+         qinfo['dslocks'].append(dsid)
+         dslocks.append(dsid)
+      return dslocks
+
+   # unlock the given datasets and drop them from the lock list tracked for cleanup on quit
+   def unlock_backup_datasets(self, qinfo, dslocks):
+      for dsid in dslocks:
+         self.lock_dataset(dsid, 0, self.LOGERR)
+         if dsid in qinfo['dslocks']: qinfo['dslocks'].remove(dsid)
+
    # get the current bid for adding bfile
    def current_bid(self):
       pgrec = self.pgget("bfile", "max(bid) mid", '', self.LGEREX)
@@ -642,9 +665,12 @@ class DsQuasar(PgCMD, PgSplit):
       s = 's' if bcnt > 1 else ''
       self.pglog("{}: {} {} file{}...".format(amsg, bcnt, bmsg, s), self.WARNLG)
       qinfo = {'backflag' : backflag, 'bid' : 0, 'dsids' : [], 'fcnt' : 0, 'size' : 0, 'abids' : [],
-               'infiles' : [], 'instr' : '', 'qdsids' : [], 'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
+               'infiles' : [], 'instr' : '', 'qdsids' : [], 'dslocks' : [], 'qfcnt' : 0,
+               'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
-         if self.PGBACK['dolock'] and self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+         if self.PGBACK['dolock']:
+            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            qinfo['dslocks'].append(dsid)
          for bid in bfiles[dsid]:
             # the status 'N' records were gathered before this dataset was locked, so they
             # can be hours old; confirm each one is still untarred before spending a tar on
@@ -656,8 +682,15 @@ class DsQuasar(PgCMD, PgSplit):
             qinfo['bid'] = bid
             binfo = bfiles[dsid][bid]
             for bkey in binfo: qinfo[bkey] = binfo[bkey]
+            # a tar file can hold files of multiple datasets; lock the other ones too before
+            # tarring, and release them again as soon as the tar file is dispatched
+            dslocks = self.lock_backup_datasets(qinfo, binfo['dsids'])
+            if dslocks is None:
+               self.pglog("{}-{}: another dataset of the tar file is locked, skip".format(dsid, bid), self.DTLACT)
+               continue
             self.process_one_backup_file(qinfo, False)
-         if self.PGBACK['dolock']: self.lock_dataset(dsid, 0, self.LOGERR)
+            self.unlock_backup_datasets(qinfo, dslocks)
+         if self.PGBACK['dolock']: self.unlock_backup_datasets(qinfo, [dsid])
       if self.PGBACK['mproc'] > 1:
          self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
          self.confirm_quasar_counts(qinfo, qinfo['abids'], "status = 'T'")   # recount confirmed backups from RDADB
