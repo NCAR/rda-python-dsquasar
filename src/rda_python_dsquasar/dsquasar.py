@@ -84,10 +84,25 @@ class DsQuasar(PgCMD, PgSplit):
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
       self.TFCOUNT = 100          # if file count is greater, use self.MINSIZE for tar file
       self.SUBLMTS = 2000         # file count limit for a sub-group
-      self.MPLIMIT = 500          # tar file count per batch process for multi-processing
-      self.MPMAX = 8              # maximum number of batch processes for multi-processing
+      # tarring (TARACT) forks one child per tar file, so its parallel unit is the tar
+      # file: use a small per-process limit and a high cap to spread the work widely.
+      self.MPTLIMIT = 200         # tar file count per batch process for tarring
+      self.MPTMAX = 12            # maximum number of batch processes for tarring
+      # uploading (BCKACT) forks one child per BCKSIZE transfer batch (~BCKSIZE/TARSIZE
+      # tar files each), so far fewer parallel units than tar files: use a large
+      # per-process limit and a low cap to avoid over-reserving cpus.
+      self.MPBLIMIT = 900         # tar file count per batch process for uploading
+      self.MPBMAX = 4             # maximum number of batch processes for uploading
       self.MAXRUNTIME = 23*3600   # 23 hours; stop before the 24-hour PBS walltime
       self.ONEHOUR = 3600         # seconds; time headroom needed to finish before walltime
+      # a repeat submit normally blocks as a duplicate while the batch job is running. if
+      # that job is running but barely progressing, an extra worker is submitted instead
+      # (see pick_worker_slot). progress is measured as the fraction of the recorded
+      # dscheck work done, which is action independent because dcount counts GDEX files
+      # for -A 3 but tar files for -A 2/-A 4.
+      self.MAXWORKERS = 2         # default maximum concurrent workers per command (-W)
+      self.WORKGRACE = 6*3600     # 6 hours before a running job is judged on progress
+      self.MINWDONE = 0.01        # done fraction after WORKGRACE that counts as progressing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -103,6 +118,8 @@ class DsQuasar(PgCMD, PgSplit):
          'doemail' : 0,
          'starttime' : 0,   # wall-clock start of the run, for the PBS walltime guard
          'tardone' : 0,     # tar files dispatched so far, for the finish-rate estimate
+         'maxworkers' : self.MAXWORKERS,   # -W, maximum concurrent workers per command
+         'worker' : 1,      # -w, this run's worker slot; >1 for an added extra worker
          'cmd'  : None
       }
       self.dsids = []
@@ -119,7 +136,7 @@ class DsQuasar(PgCMD, PgSplit):
       argv = sys.argv[1:]
       for arg in argv:
          if re.match(r'^-(h|-help)$', arg, re.I): self.show_usage('dsquasar')
-         ms = re.match(r'^-(a|b|c|d|e|E|l|m|n|t|u|A|B|D)$', arg)
+         ms = re.match(r'^-(a|b|c|d|e|E|l|m|n|t|u|w|A|B|D|W)$', arg)
          if ms:
             arg = ms.group(1)
             if  arg == 'b':
@@ -127,7 +144,7 @@ class DsQuasar(PgCMD, PgSplit):
             elif arg in self.sopts:
                self.sopts[arg] = 1
                option = None
-            elif 'Acdlmt'.find(arg) > -1:
+            elif 'AcdlmtwW'.find(arg) > -1:
                option = arg
                if arg == 'd': self.bopts = []
             elif 'BD'.find(arg) > -1:
@@ -153,11 +170,22 @@ class DsQuasar(PgCMD, PgSplit):
                if not (arg == 'Y' or arg == 'N'): self.pglog(arg +": Lock Flag(-l) must be Y or N", self.LGWNEX)
                self.PGBACK['dolock'] = 1 if arg == 'Y' else 0
                option = None
+            elif option == 'W':
+               self.PGBACK['maxworkers'] = int(arg)
+               if self.PGBACK['maxworkers'] < 1: self.pglog(arg +": Maximum Workers(-W) must be > 0", self.LGWNEX)
+               option = None
+            elif option == 'w':
+               self.PGBACK['worker'] = int(arg)
+               if self.PGBACK['worker'] < 1: self.pglog(arg +": Worker Slot(-w) must be > 0", self.LGWNEX)
+               option = None
             else:
                self.add_to_dsids(arg)
          else:
             self.pglog(arg + ": Value without leading option", self.LGWNEX)
       if not (self.sopts['a'] or self.dsids): self.show_usage('dsquasar')
+      # an even worker slot walks the datasets from the other end so that it and the odd
+      # slot before it meet in the middle instead of fighting over the same dataset locks
+      if self.reverse_dsids(): self.dsids.reverse()
       self.PGBACK['cmd'] = "dsquasar {}".format(' '.join(argv))
 
    # do quasar backup process
@@ -320,24 +348,35 @@ class DsQuasar(PgCMD, PgSplit):
          self.backup_dataset_tarfiles(dsfiles, 'B')
          self.backup_dataset_tarfiles(dsfiles, 'D')
 
-   # size up the number of batch processes from the number of tar files that are the
-   # unit of parallel work: new infiles CINACT will create this run (estimated from the
-   # total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
-   # status 'N' infile records to build (TARACT) and status 'T' tar records to transfer
-   # (BCKACT). scales one process per MPLIMIT tar files, capped at MPMAX. create-infile
-   # only (-A 1) is not a batch action (see NBACTS) so it never reaches here and stays
-   # single process.
+   # size up the number of batch processes to reserve, sizing tarring and uploading
+   # independently because their parallel work units differ. tarring's unit is the tar
+   # file (one child per tar): new infiles CINACT will create this run (estimated from
+   # the total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
+   # status 'N' infile records to build (TARACT), scaled one process per MPTLIMIT tar
+   # files, capped at MPTMAX. uploading's unit is the BCKSIZE transfer batch (one child
+   # per ~BCKSIZE/TARSIZE tar files): existing status 'T' tar records to transfer
+   # (BCKACT), scaled one process per MPBLIMIT tar files, capped at MPBMAX. the phases
+   # run sequentially in one run and share a single reserved ncpus, so return the max of
+   # the two counts. create-infile only (-A 1) is not a batch action (see NBACTS) so it
+   # never reaches here and stays single process.
    def batch_process_count(self, acts):
+      mproc = 1
       tcnt = 0
       if acts&self.CINACT:
          sizes = [0]
          if self.gather_dataset_files(None, False, sizes):
             tcnt += max(1, (sizes[0] + self.TARSIZE - 1)//self.TARSIZE)
       if acts&self.TARACT: tcnt += self.batch_tar_count('N')
-      if acts&self.BCKACT: tcnt += self.batch_tar_count('T')
-      if tcnt <= self.MPLIMIT: return 1
-      mproc = (tcnt + self.MPLIMIT - 1)//self.MPLIMIT
-      if mproc > self.MPMAX: mproc = self.MPMAX
+      if tcnt > self.MPTLIMIT:
+         tproc = (tcnt + self.MPTLIMIT - 1)//self.MPTLIMIT
+         if tproc > self.MPTMAX: tproc = self.MPTMAX
+         if tproc > mproc: mproc = tproc
+      if acts&self.BCKACT:
+         bcnt = self.batch_tar_count('T')
+         if bcnt > self.MPBLIMIT:
+            bproc = (bcnt + self.MPBLIMIT - 1)//self.MPBLIMIT
+            if bproc > self.MPBMAX: bproc = self.MPBMAX
+            if bproc > mproc: mproc = bproc
       return mproc
 
    # count the bfile tar records of a given status honoring backflag/dataset scope
@@ -351,29 +390,82 @@ class DsQuasar(PgCMD, PgSplit):
          return tcnt
       return self.pgget('bfile', '', bcnd, self.LGWNEX)
 
+   # look up the dscheck record registered for a worker's argv, using the same lookup key
+   # init_dscheck builds
+   def lookup_worker_dscheck(self, argv):
+      dargv = self.argv_to_string(argv, 0, "Process in Delayed Mode")
+      dargx = None
+      if len(dargv) > 100:
+         dargx = dargv[100:]
+         dargv = dargv[0:100]
+      return self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN)
+
+   # a running batch job counts as stalled once it has run longer than WORKGRACE and has
+   # still completed no more than MINWDONE of its recorded work; anything further along
+   # than that is progressing and is left alone. the done fraction dcount/fcount is used
+   # instead of a raw count because dcount counts GDEX files for -A 3 but tar files for
+   # -A 2/-A 4. a job that is not locked, not started yet, or whose process is gone is not
+   # stalled: init_dscheck already restarts a dead one.
+   def worker_progress_stalled(self, pgrec):
+      if not (pgrec['pid'] and pgrec['stttime']): return False
+      if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
+      if (tm() - pgrec['stttime']) < self.WORKGRACE: return False
+      done = pgrec['dcount']/pgrec['fcount'] if pgrec['fcount'] else 0
+      return done <= self.MINWDONE
+
+   # whether more than one worker may run the current action. two workers stay off each
+   # other's files only through dataset locking, so the action must lock what it works on:
+   # creating input files and building tar files do (backup_dataset_files and
+   # backup_dataset_infiles lock each dsid), but transferring (BCKACT) walks the status 'T'
+   # records by bid without locking, so two workers would transfer the same tar files twice.
+   def extra_workers_allowed(self):
+      return bool(self.PGBACK['dolock'] and not self.PGBACK['action']&self.BCKACT)
+
+   # pick the worker slot to submit into. slot 1 uses the invocation argv unchanged so a
+   # repeat submit still blocks as a duplicate. when a slot is held by a running job that
+   # is stalled, the next slot is tried instead, and appending -w N to the argv gives that
+   # extra worker its own dscheck record and PBS job. returns the slot and the dscheck
+   # record already registered for it, if any.
+   def pick_worker_slot(self):
+      if self.PGBACK['worker'] > 1:   # an explicit -w N forces that slot
+         return (self.PGBACK['worker'], self.lookup_worker_dscheck(sys.argv[1:]))
+      pgrec = self.lookup_worker_dscheck(sys.argv[1:])
+      if not pgrec or not self.worker_progress_stalled(pgrec): return (1, pgrec)
+      # worker 1 is running but stalled: submit an extra worker into the first slot with no
+      # dscheck record yet. a slot that is already registered is left alone, so an extra
+      # worker still waiting to be started by the dscheck daemon is never taken over and
+      # run here instead, outside PBS.
+      maxw = self.PGBACK['maxworkers'] if self.extra_workers_allowed() else 1
+      for slot in range(2, maxw + 1):
+         if not self.lookup_worker_dscheck(sys.argv[1:] + ['-w', str(slot)]):
+            self.pglog("Worker 1 is running with {} of {} done: adding worker {}".format(
+                       pgrec['dcount'], pgrec['fcount'], slot), self.LOGWRN)
+            return (slot, None)
+      return (1, pgrec)   # no free slot; block on worker 1 as usual
+
    # start none daemon and intialize dscheck counts
    def start_dsquasar_none_daemon(self, act, fcnt = 0):
       acts = self.PGBACK['action']
+      cact = ('A' if acts < 10 else '') + str(acts)
       if self.bopts != None:
          dsid = self.dsids[0] if len(self.dsids) == 1 else ''
          if not re.match(r'^[a-z]\d{6}$', dsid): dsid = ''
-         cact = ('A' if acts < 10 else '') + str(acts)
          # only the initial delayed submit (not yet under PBS) sets qoptions for the batch
          # job the dscheck daemon will start; size up multi-processing from the detail file
-         # count (unless an explicit -m N was given) and reserve matching PBS cpus. the
-         # invocation argv is left unchanged so a repeat submit with the same argv still
-         # blocks as a duplicate. a command-line or the PBS batch run does not set qoptions.
+         # count (unless an explicit -m N was given) and reserve matching PBS cpus. a
+         # command-line or the PBS batch run does not set qoptions.
          if self.PGLOG['CURBID'] < 1 and (act == self.STTACT or acts&self.NBACTS != acts):
-            # check for a duplicate command first (same lookup key init_dscheck builds);
-            # only size up multi-processing - which checks the backup files - when no
-            # matching dscheck record is on file yet, so a duplicate submit blocks without
-            # checking the backup files.
-            dargv = self.argv_to_string(sys.argv[1:], 0, "Process in Delayed Mode")
-            dargx = None
-            if len(dargv) > 100:
-               dargx = dargv[100:]
-               dargv = dargv[0:100]
-            if not self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN):
+            # pick the worker slot first; slot 1 keeps the invocation argv so a repeat
+            # submit still blocks as a duplicate, while a stalled run hands the next slot
+            # its own -w N argv. only size up multi-processing - which checks the backup
+            # files - when the chosen slot has no dscheck record on file yet, so a
+            # duplicate submit blocks without checking the backup files.
+            (slot, pgrec) = self.pick_worker_slot()
+            if slot > 1:
+               self.PGBACK['worker'] = slot
+               sys.argv.extend(['-w', str(slot)])
+               self.PGBACK['cmd'] += " -w {}".format(slot)
+            if not pgrec:
                qoptions = '-l walltime=24:00:00'
                if acts&self.NBACTS != acts:
                   if self.PGBACK['mproc'] < 2: self.PGBACK['mproc'] = self.batch_process_count(acts)
@@ -393,7 +485,11 @@ class DsQuasar(PgCMD, PgSplit):
          if self.PGBACK['mproc'] > 1 and acts&self.NBACTS == acts: self.PGBACK['mproc'] = 1
       elif self.PGBACK['mproc'] > 1 and acts&self.NBACTS == acts:
          self.PGBACK['mproc'] = 1
-      self.start_none_daemon('dsquasar', '', self.PGLOG['CURUID'], self.PGBACK['mproc'], 60, 1)
+      # tag the daemon string with the action, and with the worker slot for an extra worker,
+      # so that concurrent workers can be told apart in the log
+      dact = cact
+      if self.PGBACK['worker'] > 1: dact += "-w{}".format(self.PGBACK['worker'])
+      self.start_none_daemon('dsquasar', dact, self.PGLOG['CURUID'], self.PGBACK['mproc'], 60, 1)
       if self.PGLOG['DSCHECK']:
          if act == self.STTACT:
             fcnt = self.gather_dataset_bckfiles(None, False)
@@ -464,6 +560,10 @@ class DsQuasar(PgCMD, PgSplit):
          if self.PGBACK['dolock'] and dsid not in qinfo['dslocks']:
             if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
             qinfo['dslocks'].append(dsid)
+            if not self.regather_dataset_files(bfiles, dsid, backflag):
+               self.lock_dataset(dsid, 0, self.LGEREX)
+               qinfo['dslocks'].remove(dsid)
+               continue
          fcnt = bfiles[dsid]['scount']
          if fcnt > 0:
             self.process_backup_files(qinfo, dsid, fcnt, bfiles[dsid]['srecs'], 'S')
@@ -504,6 +604,44 @@ class DsQuasar(PgCMD, PgSplit):
          msg = "{}: {}({}) GDEX {}file{} of {} for next {}".format(amsg, fcnt, ssize, cmsg, s, dmsg, bmsg)
          self.pglog(self.INDENT + msg, self.LOGACT)
 
+   # the file list was gathered before this dataset was locked, so it can be hours old and
+   # name files another worker has backed up since. re-gather it now that the dataset is
+   # locked and no other worker can add backup files for it, and replace the stale list.
+   # returns the file count left to back up for the given backup flag.
+   def regather_dataset_files(self, bfiles, dsid, backflag):
+      pgrec = self.pgget("dataset", "backflag", "dsid = '{}'".format(dsid), self.LGWNEX)
+      if not pgrec: return 0
+      dsfiles = {'B' : {}, 'D' : {}}
+      self.get_dataset_files(dsid, dsfiles, pgrec['backflag'])
+      if dsid not in dsfiles[backflag]:
+         self.pglog("{}: no {} file left to back up, skip".format(dsid, self.BACKMSG[backflag]), self.DTLACT)
+         return 0
+      bfiles[dsid] = dsfiles[backflag][dsid]
+      return bfiles[dsid]['scount'] + bfiles[dsid]['wcount']
+
+   # lock the other datasets whose files share one tar file, so that no other worker gathers
+   # or tars their files while this tar file is being claimed. datasets already locked by this
+   # run, including the primary one, are left alone. returns the datasets locked here, to be
+   # unlocked once the tar file is dispatched, or None if one of them is held by another
+   # worker, in which case nothing new is left locked and the tar file must wait for a later run
+   def lock_backup_datasets(self, qinfo, dsids):
+      dslocks = []
+      if not self.PGBACK['dolock']: return dslocks
+      for dsid in dsids:
+         if dsid in qinfo['dslocks']: continue
+         if self.lock_dataset(dsid, 1, self.LOGERR) < 1:
+            self.unlock_backup_datasets(qinfo, dslocks)
+            return None
+         qinfo['dslocks'].append(dsid)
+         dslocks.append(dsid)
+      return dslocks
+
+   # unlock the given datasets and drop them from the lock list tracked for cleanup on quit
+   def unlock_backup_datasets(self, qinfo, dslocks):
+      for dsid in dslocks:
+         self.lock_dataset(dsid, 0, self.LOGERR)
+         if dsid in qinfo['dslocks']: qinfo['dslocks'].remove(dsid)
+
    # get the current bid for adding bfile
    def current_bid(self):
       pgrec = self.pgget("bfile", "max(bid) mid", '', self.LGEREX)
@@ -527,15 +665,32 @@ class DsQuasar(PgCMD, PgSplit):
       s = 's' if bcnt > 1 else ''
       self.pglog("{}: {} {} file{}...".format(amsg, bcnt, bmsg, s), self.WARNLG)
       qinfo = {'backflag' : backflag, 'bid' : 0, 'dsids' : [], 'fcnt' : 0, 'size' : 0, 'abids' : [],
-               'infiles' : [], 'instr' : '', 'qdsids' : [], 'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
+               'infiles' : [], 'instr' : '', 'qdsids' : [], 'dslocks' : [], 'qfcnt' : 0,
+               'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
-         if self.PGBACK['dolock'] and self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+         if self.PGBACK['dolock']:
+            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            qinfo['dslocks'].append(dsid)
          for bid in bfiles[dsid]:
+            # the status 'N' records were gathered before this dataset was locked, so they
+            # can be hours old; confirm each one is still untarred before spending a tar on
+            # it. holding the dataset lock makes this check race free against a second
+            # worker, which cannot hold the same dsid at the same time.
+            if not self.pgget('bfile', '', "bid = {} AND status = 'N'".format(bid), self.LGEREX):
+               self.pglog("{}-{}: no longer waiting to be tarred, skip".format(dsid, bid), self.DTLACT)
+               continue
             qinfo['bid'] = bid
             binfo = bfiles[dsid][bid]
             for bkey in binfo: qinfo[bkey] = binfo[bkey]
+            # a tar file can hold files of multiple datasets; lock the other ones too before
+            # tarring, and release them again as soon as the tar file is dispatched
+            dslocks = self.lock_backup_datasets(qinfo, binfo['dsids'])
+            if dslocks is None:
+               self.pglog("{}-{}: another dataset of the tar file is locked, skip".format(dsid, bid), self.DTLACT)
+               continue
             self.process_one_backup_file(qinfo, False)
-         if self.PGBACK['dolock']: self.lock_dataset(dsid, 0, self.LOGERR)
+            self.unlock_backup_datasets(qinfo, dslocks)
+         if self.PGBACK['dolock']: self.unlock_backup_datasets(qinfo, [dsid])
       if self.PGBACK['mproc'] > 1:
          self.check_child(None, 0, self.LOGWRN, 1)   # wait all child processes done
          self.confirm_quasar_counts(qinfo, qinfo['abids'], "status = 'T'")   # recount confirmed backups from RDADB
@@ -674,6 +829,18 @@ class DsQuasar(PgCMD, PgSplit):
             for did in pgrecs['dsids'][i].split(','):
                if did and did not in qinfo['qdsids']: qinfo['qdsids'].append(did)
 
+   # dsarch reports "<dsid>-<file>: <type> file backed up to /<dsid>/<bfile> by <date>" for
+   # each file to tar that is already backed up. our own record is the duplicate to drop only
+   # when those files point at some other bfile; a report naming our own bfile means this
+   # record is the one already backed up, so it must be kept.
+   def duplicate_backup_file(self, dsid, qfile):
+      ours = "/{}/{}".format(dsid, qfile)
+      isdup = False
+      for ms in re.finditer(r'file backed up to (\S+) by ', self.PGLOG['SYSERR']):
+         if ms.group(1) == ours: return False
+         isdup = True
+      return isdup
+
    # backup one Quasar Backup or Backup&Drdata from one or multiple inputs and,
    # reset the quasar backup dict
    def process_one_backup_file(self, qinfo, addback, keepid = False):
@@ -713,7 +880,7 @@ class DsQuasar(PgCMD, PgSplit):
                stat = self.pgsystem(cmd, self.ERRACT, 325)   # 256 + 64 + 4 + 1
                if stat:
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
-               elif re.search(r'file backed up to', self.PGLOG['SYSERR']):
+               elif self.duplicate_backup_file(dsid, qfile):
                   if self.pgdel('bfile', f"bid = {bid}"):
                      self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplication", self.DTLACT)
                   for infile in qinfo['infiles']: self.delete_local_file(infile)
@@ -726,7 +893,7 @@ class DsQuasar(PgCMD, PgSplit):
             stat = self.pgsystem(cmd, self.ERRACT, 325)   # 256 + 64 + 4 + 1
             if stat:
                for infile in qinfo['infiles']: self.delete_local_file(infile)
-            elif re.search(r'file backed up to', self.PGLOG['SYSERR']):
+            elif self.duplicate_backup_file(dsid, qfile):
                if self.pgdel('bfile', f"bid = {bid}"):
                   self.pglog(f"{dsid}-{qfile}: backup tarfile deleted for duplication", self.DTLACT)
                for infile in qinfo['infiles']: self.delete_local_file(infile)
@@ -1102,6 +1269,16 @@ class DsQuasar(PgCMD, PgSplit):
       if self.pgget_wfile(dsid, 'wid', "bid " + bcnd, self.LGWNEX): fopt |= self.WOPT
       return fopt
 
+   # dataset ordering for gathering work; even worker slots start from the high end (d999999)
+   # and odd ones from the low end, so that a pair of workers meets in the middle instead of
+   # fighting over the same dataset locks
+   def dsid_order(self):
+      return " ORDER BY dsid DESC" if self.reverse_dsids() else " ORDER BY dsid"
+
+   # whether this worker slot walks the datasets from the high end
+   def reverse_dsids(self):
+      return self.PGBACK['worker']%2 == 0
+
    # gather all available dataset ids to backup data files
    def gather_dataset_files(self, dsfiles, unlock = True, sizes = None):
       fcnt = 0
@@ -1113,7 +1290,7 @@ class DsQuasar(PgCMD, PgSplit):
             pgrec = self.pgget("dataset", "dsid, backflag, pid", "dsid = '{}'".format(dsid), self.LGWNEX)
             if pgrec: pgrecs.append(pgrec)
       else:
-         mrecs = self.pgmget("dataset", "dsid, backflag, pid", "ORDER BY dsid", self.LGWNEX)
+         mrecs = self.pgmget("dataset", "dsid, backflag, pid", self.dsid_order().strip(), self.LGWNEX)
          dcnt = len(mrecs['dsid']) if mrecs else 0
          pgrecs = [self.onerecord(mrecs, i) for i in range(dcnt)]
       for pgrec in pgrecs:
@@ -1136,7 +1313,7 @@ class DsQuasar(PgCMD, PgSplit):
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + " ORDER BY dsid"]
+         cnds = [bcnd + self.dsid_order()]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0
@@ -1161,7 +1338,7 @@ class DsQuasar(PgCMD, PgSplit):
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + " ORDER BY dsid"]
+         cnds = [bcnd + self.dsid_order()]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0

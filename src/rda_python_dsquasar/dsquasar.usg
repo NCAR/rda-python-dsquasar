@@ -83,6 +83,24 @@
    -n     Gather and show the available file counts only; no backup actions are
           performed.
 
+   -W  MaxWorkers
+          Maximum number of concurrent batch workers for the same command.
+          Defaults to 2.  A repeat delayed submit normally blocks while the
+          batch job is running; if that job has run for more than 6 hours and
+          has still completed no more than 1% of its recorded work, it is
+          treated as stalled and an extra worker is submitted instead, up to
+          this limit.  Extra workers rely on dataset locking to stay off each
+          other's files, so this is pinned to 1 with -l N, and also for the
+          transfer action (-A 4, 6, 7), which claims tar files without locking.
+
+   -w  WorkerSlot
+          Worker slot number for this run, added automatically to an extra
+          worker's command line so it gets its own dscheck record.  Not
+          normally set by hand.  Even slots walk the datasets in descending
+          dsid order (from d999999) and odd slots in ascending order, so that a
+          pair of workers meets in the middle instead of contending for the
+          same dataset locks.
+
    -u     Clean up (unlock) backup locks for the given dataset IDs.  Dataset IDs
           must be provided (not valid with -a).
 
