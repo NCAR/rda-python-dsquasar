@@ -107,7 +107,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"Zaihua Ji", options:{ bold:true } },
     { text:"   zji@ucar.edu", options:{} },
   ], { x:0.72, y:6.05, w:11, h:0.4, fontFace:SANS, fontSize:13, color:"C3D7EE", margin:0 });
-  s.addText("Tars & uploads through  dsarch -AQ  \u2022  scheduled by the  dscheck  daemon", {
+  s.addText("Tars through  dsarch AQ  \u2022  uploads through  dsglobus  \u2022  scheduled by  dscheck", {
     x:0.72, y:6.5, w:11, h:0.4, fontFace:MONO, fontSize:12, color:"97999B", margin:0 });
 })();
 
@@ -119,8 +119,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"dsquasar", options:{ bold:true, color:DEEP } },
     { text:" keeps a ", options:{} },
     { text:"tape copy of the whole GDEX archive", options:{ bold:true } },
-    { text:". It finds Web and Saved files that have never been backed up, groups them into large tar files, and ships those to the NCAR Quasar Globus end points through ", options:{} },
-    { text:"dsarch -AQ", options:{ bold:true, color:DEEP, fontFace:MONO } },
+    { text:". It finds Web and Saved files that have never been backed up, groups them into large tar files built by ", options:{} },
+    { text:"dsarch AQ", options:{ bold:true, color:DEEP, fontFace:MONO } },
+    { text:", then uploads many of those tars at once to the NCAR Quasar Globus end points with ", options:{} },
+    { text:"dsglobus", options:{ bold:true, color:DEEP, fontFace:MONO } },
     { text:".", options:{} },
   ], { x:0.5, y:1.65, w:5.3, h:1.9, fontFace:SANS, fontSize:16,
        color:INK, lineSpacingMultiple:1.15, margin:0, valign:"top" });
@@ -149,7 +151,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["\u2315","Gather","find Web/Saved files still to back up"],
     ["\u2261","List","write dsarch input files, add bfile records"],
     ["\u25A3","Tar","bundle into >=5 GB tar files via dsarch"],
-    ["\u2601","Transfer","Globus batches to gdex-quasar (+drdata)"],
+    ["\u2601","Transfer","dsglobus batches to gdex-quasar (+drdata)"],
     ["\u2713","Verify","compare sizes on tape, reset if wrong"],
     ["\u25A4","Report","statistics & email for specialists"],
   ];
@@ -233,8 +235,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const stages = [
     ["1","GDEX Files","Web & Saved files with bid = 0 on disk or object store", DEEP],
     ["2","Input Lists","dsarch input files + bfile record, status 'N'", TEAL],
-    ["3","Tar Files","built on gdex-glade by dsarch -AQ -TO, status 'T'", GREEN],
-    ["4","Quasar Tape","Globus transfer to gdex-quasar (+drdata), status 'A'", MID],
+    ["3","Tar Files","built on gdex-glade by dsarch AQ -TO, status 'T'", GREEN],
+    ["4","Quasar Tape","dsglobus transfer to gdex-quasar (+drdata), status 'A'", MID],
   ];
   const y=2.2, cw=2.75, ch=2.5, gap=0.42;
   let x=0.62;
@@ -382,7 +384,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       "dsquasar -t d123456 -n", DEEP],
     ["Back up one dataset","Create the input lists and build the tar files.",
       "dsquasar -t d123456 -A 3", TEAL],
-    ["Send the tars to tape","Batches built tars into >=90 GB Globus transfers.",
+    ["Send the tars to tape","Batches built tars into >=90 GB dsglobus transfers.",
       "dsquasar -t d123456 -A 4", GREEN],
     ["The nightly production run","All flagged datasets, in the background, as a PBS batch job with email.",
       "dsquasar -a -A 3 -e -b -d PBS", AMBER],
@@ -491,7 +493,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["-A 1","Create Input","list Web/Saved files, add bfile records 'N'", DEEP],
     ["-A 2","Tar Backup","build >=5 GB tars from 'N' lists \u2192 'T'", TEAL],
     ["-A 3","Create + Tar","the default, and the normal production run", AMBER, true],
-    ["-A 4","Transfer","Globus batches of 'T' tars to Quasar \u2192 'A'", GREEN],
+    ["-A 4","Transfer","dsglobus batches of 'T' tars to Quasar \u2192 'A'", GREEN],
     ["-A 6","Tar + Transfer","build then ship in one run", DEEP],
     ["-A 7","Full chain","list, tar, and ship end to end", TEAL],
     ["-A 8","Check","compare sizes on tape, reset bad ones to 'N'", GREEN],
@@ -716,7 +718,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const steps = [
     "Walk the status 'T' records and accumulate tars until the batch reaches 90 GB",
     "Confirm each tar still exists on gdex-glade; if not, reset that record to 'N' to be rebuilt",
-    "Transfer the batch with one Globus request \u2014 Drdata first when the flag is 'D', then Backup",
+    "Hand the whole list to dsglobus as one transfer \u2014 Drdata first when the flag is 'D', then Backup",
     "Wait for both transfers to report finished",
     "Delete the local tars and set every record in the batch to status 'A'",
   ];
@@ -743,12 +745,12 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     s.addShape(p.ShapeType.roundRect, { x:7.05+col*0.6, y:2.45+row*0.5, w:0.5, h:0.38,
       rectRadius:0.04, fill:{color:GREEN}, line:{type:"none"} });
   }
-  s.addText("18 tar files \u00d7 5 GB  =  one 90 GB Globus transfer", {
+  s.addText("18 tar files \u00d7 5 GB  =  one 90 GB dsglobus transfer", {
     x:7.05, y:3.5, w:5.5, h:0.35, fontFace:SANS, bold:true, fontSize:13,
     color:INK, margin:0 });
-  s.addText("One request per batch instead of per tar keeps Globus queueing and per-transfer overhead down; each batch is also the unit of parallelism, so one child process handles one batch.", {
-    x:7.05, y:3.85, w:5.5, h:0.45, fontFace:SANS, fontSize:11.5, color:MUTE,
-    margin:0, valign:"top", lineSpacingMultiple:1.05 });
+  s.addText("dsarch AQ can upload a tar as it builds it, but only one at a time. dsquasar instead calls dsglobus directly with the whole list, so a batch costs one transfer request rather than eighteen. Each batch is also the unit of parallelism \u2014 one child process per batch.", {
+    x:7.05, y:3.85, w:5.5, h:0.6, fontFace:SANS, fontSize:11, color:MUTE,
+    margin:0, valign:"top", lineSpacingMultiple:1.03 });
   s.addText("Source and destination paths", { x:6.78, y:4.5, w:6.05, h:0.35,
     fontFace:SANS, bold:true, fontSize:14, color:DEEP, margin:0 });
   code(s, 6.78, 4.88, 6.05, 1.0,
