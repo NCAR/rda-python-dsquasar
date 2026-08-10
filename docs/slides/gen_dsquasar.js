@@ -212,7 +212,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     s.addText([
       { text:"\u2192  ", options:{ color:c.c, bold:true } },
       { text:c.link, options:{ color:DEEP, bold:true, hyperlink:{ url:c.url } } },
-    ], { x:x+0.3, y:y0+ch-0.44, w:cw-0.6, h:0.34, fontFace:MONO, fontSize:10.5,
+    ], { x:x+0.3, y:y0+ch-0.44, w:cw-0.42, h:0.34, fontFace:MONO, fontSize:9.5,
       margin:0, valign:"middle" });
   });
   s.addText([
@@ -438,30 +438,31 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"Group flags refine, they do not enroll.  ", options:{ bold:true, color:DEEP } },
     { text:"Once the dataset flag is set, a top-level ", options:{} },
     { text:"dsgroup", options:{ fontFace:MONO, bold:true } },
-    { text:" with its own flag is applied group by group \u2014 ", options:{} },
-    { text:"'P'", options:{ fontFace:MONO, bold:true } },
-    { text:" inherits, ", options:{} },
-    { text:"'N'", options:{ fontFace:MONO, bold:true } },
-    { text:" excludes.", options:{} },
-  ], { x:0.5, y:4.32, w:6.05, h:0.8, fontFace:SANS, fontSize:12, color:INK,
+    { text:" flag is applied group by group.", options:{} },
+  ], { x:0.5, y:4.34, w:6.05, h:0.55, fontFace:SANS, fontSize:12, color:INK,
        margin:0, valign:"top", lineSpacingMultiple:1.06 });
-  // how the flag is actually set, plus the per-run override
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.2, w:6.05, h:1.42, rectRadius:0.09,
+  // where each flag is actually set, plus the per-run override
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:4.92, w:6.05, h:1.7, rectRadius:0.09,
     fill:{color:TINT}, line:{color:LINE, width:1} });
   s.addText([
-    { text:"Set the flag in the web config tool", options:{ bold:true, color:DEEP } },
-    { text:"\n", options:{} },
+    { text:"Set Backup Flag in the web config tool   ", options:{ bold:true, color:DEEP } },
     { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
       hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
-    { text:"   under   ", options:{} },
-    { text:"DSARCH \u2192 Dataset Information", options:{ bold:true } },
+    { text:"\nDSARCH \u2192 Dataset Information", options:{ bold:true } },
+    { text:"  sets ", options:{} },
+    { text:"dataset.backflag", options:{ fontFace:MONO, bold:true } },
+    { text:" for the whole dataset", options:{} },
+    { text:"\nDSARCH \u2192 Group Information", options:{ bold:true } },
+    { text:"  sets ", options:{} },
+    { text:"dsgroup.backflag", options:{ fontFace:MONO, bold:true } },
+    { text:" for one group", options:{} },
     { text:"\nPer-run override: ", options:{ bold:true, color:DEEP } },
     { text:"-B", options:{ fontFace:MONO, bold:true } },
     { text:" or ", options:{} },
     { text:"-D", options:{ fontFace:MONO, bold:true } },
     { text:" narrows a run to one copy; neither means both.", options:{} },
-  ], { x:0.72, y:5.2, w:5.6, h:1.42, fontFace:SANS, fontSize:11, color:INK,
-       margin:0, valign:"middle", lineSpacingMultiple:1.15 });
+  ], { x:0.72, y:4.92, w:5.65, h:1.7, fontFace:SANS, fontSize:10.5, color:INK,
+       margin:0, valign:"middle", lineSpacingMultiple:1.18 });
 
   // right: two endpoints diagram
   s.addShape(p.ShapeType.roundRect, { x:6.78, y:1.7, w:6.05, h:4.95, rectRadius:0.1,
