@@ -119,13 +119,13 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"dsquasar", options:{ bold:true, color:DEEP } },
     { text:" keeps a ", options:{} },
     { text:"tape copy of the whole GDEX archive", options:{ bold:true } },
-    { text:". It finds Web and Saved files that have never been backed up, groups them into large tar files built by ", options:{} },
+    { text:". It finds files never backed up, bundles them into large tar files with ", options:{} },
     { text:"dsarch AQ", options:{ bold:true, color:DEEP, fontFace:MONO } },
-    { text:", then uploads many of those tars at once to the NCAR Quasar Globus end points with ", options:{} },
+    { text:", then uploads many tars at once to the Quasar end points with ", options:{} },
     { text:"dsglobus", options:{ bold:true, color:DEEP, fontFace:MONO } },
     { text:".", options:{} },
-  ], { x:0.5, y:1.65, w:5.3, h:1.9, fontFace:SANS, fontSize:16,
-       color:INK, lineSpacingMultiple:1.15, margin:0, valign:"top" });
+  ], { x:0.5, y:1.62, w:5.3, h:1.9, fontFace:SANS, fontSize:15,
+       color:INK, lineSpacingMultiple:1.12, margin:0, valign:"top" });
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:3.65, w:5.3, h:2.95,
     rectRadius:0.1, fill:{color:TINT}, line:{color:LINE, width:1} });
   s.addText("Driven entirely by GDEXDB flags", {
@@ -139,13 +139,13 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:" refines it per group.", options:{} },
     { text:"\nAny file with ", options:{} },
     { text:"bid = 0", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" is not backed up yet and is picked up automatically.", options:{} },
-    { text:"\nEvery tar file gets a ", options:{} },
+    { text:" is not backed up yet, and is picked up automatically.", options:{} },
+    { text:"\nEvery tar gets a ", options:{} },
     { text:"bfile", options:{ fontFace:MONO, bold:true, color:DEEP } },
     { text:" record whose status tracks it from list to tape.", options:{} },
-    { text:"\nWork is resumable: a run that stops leaves the pending records for the next run.", options:{} },
-  ], { x:0.75, y:4.3, w:4.85, h:2.2, fontFace:SANS, fontSize:13,
-       color:INK, lineSpacingMultiple:1.12, margin:0, valign:"top" });
+    { text:"\nWork is resumable: a run that stops leaves its pending records behind.", options:{} },
+  ], { x:0.75, y:4.28, w:4.85, h:2.2, fontFace:SANS, fontSize:12,
+       color:INK, lineSpacingMultiple:1.1, margin:0, valign:"top" });
 
   const caps = [
     ["\u2315","Gather","find Web/Saved files still to back up"],
@@ -385,14 +385,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       "dsquasar -t d123456 -A 3", TEAL],
     ["Send the tars to tape","Batches built tars into >=90 GB dsglobus transfers.",
       "dsquasar -t d123456 -A 4", GREEN],
-    ["The nightly production run","All flagged datasets, in the background, as a PBS batch job with email.",
+    ["The nightly production run","All flagged datasets, as a PBS batch job with email.",
       "dsquasar -a -A 3 -e -b -d PBS", AMBER],
     ["Report on everything","Backup statistics for all datasets, mailed to the specialist.",
       "dsquasar -a -A 16 -e", DEEP],
     ["Clear a stale lock","Unlock datasets left locked by a crashed run.",
       "dsquasar -t d123456 -u", MUTE],
   ];
-  const y0=1.7, cw=6.05, ch=1.6, gapx=0.23, gapy=0.14; let i=0;
+  const y0=1.7, cw=6.05, ch=1.5, gapx=0.23, gapy=0.12; let i=0;
   ex.forEach(c=>{
     const col=i%2, row=Math.floor(i/2);
     const x=0.5+col*(cw+gapx), y=y0+row*(ch+gapy);
@@ -411,8 +411,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"Everything is incremental.  ", options:{ bold:true, color:DEEP } },
     { text:"A file is a candidate only while ", options:{} },
     { text:"bid = 0", options:{ fontFace:MONO, bold:true } },
-    { text:", so re-running a command never re-backs up work that already succeeded.", options:{} },
-  ], { x:0.5, y:6.62, w:12.33, h:0.4, fontFace:SANS, fontSize:13, color:INK,
+    { text:", so re-running never redoes finished work.", options:{} },
+  ], { x:0.5, y:6.55, w:12.33, h:0.35, fontFace:SANS, fontSize:13, color:INK,
        align:"center", margin:0 });
   foot(s);
 })();
@@ -425,10 +425,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText([
     { text:"A dataset is put under Quasar backup by setting ", options:{} },
     { text:"dataset.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:". That one field is the switch \u2014 dsquasar reads it for every dataset it visits, and nothing else enrolls a dataset.", options:{} },
-  ], { x:0.5, y:1.6, w:6.05, h:0.68, fontFace:SANS, fontSize:13, color:INK,
-       margin:0, valign:"top", lineSpacingMultiple:1.08 });
-  reftable(s, 0.5, 2.32, 6.05, [1.15,4.9], [
+    { text:" \u2014 that one field is the switch, nothing else enrolls a dataset.", options:{} },
+  ], { x:0.5, y:1.58, w:6.05, h:0.6, fontFace:SANS, fontSize:12.5, color:INK,
+       margin:0, valign:"top", lineSpacingMultiple:1.06 });
+  reftable(s, 0.5, 2.25, 6.05, [1.15,4.9], [
     ["'B'","Quasar Backup only \u2014 endpoint gdex-quasar"],
     ["'D'","Backup + Drdata \u2014 also gdex-quasar-drdata"],
     ["'N'","Not backed up at all"],
@@ -443,30 +443,25 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:" inherits, ", options:{} },
     { text:"'N'", options:{ fontFace:MONO, bold:true } },
     { text:" excludes.", options:{} },
-  ], { x:0.5, y:4.4, w:6.05, h:0.85, fontFace:SANS, fontSize:12, color:INK,
+  ], { x:0.5, y:4.32, w:6.05, h:0.8, fontFace:SANS, fontSize:12, color:INK,
        margin:0, valign:"top", lineSpacingMultiple:1.06 });
-  // how the flag is actually set
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.3, w:6.05, h:0.78, rectRadius:0.09,
+  // how the flag is actually set, plus the per-run override
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.2, w:6.05, h:1.42, rectRadius:0.09,
     fill:{color:TINT}, line:{color:LINE, width:1} });
   s.addText([
-    { text:"Set it in the web config tool:  ", options:{ bold:true, color:DEEP } },
+    { text:"Set the flag in the web config tool", options:{ bold:true, color:DEEP } },
+    { text:"\n", options:{} },
     { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
       hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
-    { text:"\nunder ", options:{} },
+    { text:"   under   ", options:{} },
     { text:"DSARCH \u2192 Dataset Information", options:{ bold:true } },
-    { text:", where backflag is set or changed per dataset.", options:{} },
-  ], { x:0.72, y:5.3, w:5.6, h:0.78, fontFace:SANS, fontSize:11, color:INK,
-       margin:0, valign:"middle", lineSpacingMultiple:1.05 });
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.14, w:6.05, h:0.5, rectRadius:0.08,
-    fill:{color:TINT2}, line:{color:LINE, width:1} });
-  s.addText([
-    { text:"Per-run override:  ", options:{ bold:true, color:DEEP } },
+    { text:"\nPer-run override: ", options:{ bold:true, color:DEEP } },
     { text:"-B", options:{ fontFace:MONO, bold:true } },
     { text:" or ", options:{} },
     { text:"-D", options:{ fontFace:MONO, bold:true } },
-    { text:" narrows a run to one copy \u2014 mutually exclusive; neither means both.", options:{} },
-  ], { x:0.72, y:6.14, w:5.6, h:0.5, fontFace:SANS, fontSize:10.5, color:INK,
-       margin:0, valign:"middle" });
+    { text:" narrows a run to one copy; neither means both.", options:{} },
+  ], { x:0.72, y:5.2, w:5.6, h:1.42, fontFace:SANS, fontSize:11, color:INK,
+       margin:0, valign:"middle", lineSpacingMultiple:1.15 });
 
   // right: two endpoints diagram
   s.addShape(p.ShapeType.roundRect, { x:6.78, y:1.7, w:6.05, h:4.95, rectRadius:0.1,
@@ -487,19 +482,19 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["gdex-quasar","Backup copy \u2014 always written", DEEP],
     ["gdex-quasar-drdata","Disaster-recovery copy \u2014 only for flag 'D'", GREEN],
   ];
-  let ey = 3.92;
+  let ey = 3.85;
   eps.forEach(e=>{
-    s.addShape(p.ShapeType.roundRect, { x:7.15, y:ey, w:5.3, h:1.05, rectRadius:0.08,
+    s.addShape(p.ShapeType.roundRect, { x:7.15, y:ey, w:5.3, h:1.0, rectRadius:0.08,
       fill:{color:LIGHT}, line:{color:e[2], width:2} });
-    s.addText(e[0], { x:7.4, y:ey+0.12, w:4.9, h:0.4, fontFace:MONO, bold:true,
+    s.addText(e[0], { x:7.4, y:ey+0.1, w:4.9, h:0.4, fontFace:MONO, bold:true,
       fontSize:14, color:e[2], margin:0, valign:"middle" });
-    s.addText(e[1], { x:7.4, y:ey+0.52, w:4.9, h:0.4, fontFace:SANS,
+    s.addText(e[1], { x:7.4, y:ey+0.5, w:4.9, h:0.4, fontFace:SANS,
       fontSize:11.5, color:MUTE, margin:0, valign:"middle" });
-    ey += 1.2;
+    ey += 1.12;
   });
   s.addText([
-    { text:"A 'D' backup writes the Drdata copy first, then the Backup copy; both must succeed before the local tar is deleted and the record is marked 'A'.", options:{} },
-  ], { x:7.15, y:6.15, w:5.3, h:0.45, fontFace:SANS, fontSize:11.5, color:MUTE,
+    { text:"A 'D' backup writes Drdata first, then Backup; both must succeed before the local tar is deleted.", options:{} },
+  ], { x:7.15, y:6.05, w:5.3, h:0.5, fontFace:SANS, fontSize:11, color:MUTE,
        margin:0, valign:"top", lineSpacingMultiple:1.05 });
   foot(s);
 })();
@@ -598,15 +593,15 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["'A' \u2192 'N'","-A 8 finds the file absent or the wrong size on the end point, so the whole tar is redone", GREEN],
     ["record dropped","dsarch reports every member file as already backed up elsewhere, so the duplicate placeholder is deleted", AMBER],
   ];
-  let by = 4.6;
+  let by = 4.58;
   backs.forEach(b=>{
-    s.addShape(p.ShapeType.roundRect, { x:0.5, y:by, w:12.3, h:0.66, rectRadius:0.08,
+    s.addShape(p.ShapeType.roundRect, { x:0.5, y:by, w:12.3, h:0.6, rectRadius:0.08,
       fill:{color:LIGHT}, line:{color:b[2], width:1.5} });
-    s.addText(b[0], { x:0.75, y:by, w:2.6, h:0.66, fontFace:MONO, bold:true,
+    s.addText(b[0], { x:0.75, y:by, w:2.6, h:0.6, fontFace:MONO, bold:true,
       fontSize:13, color:b[2], margin:0, valign:"middle" });
-    s.addText(b[1], { x:3.4, y:by, w:9.2, h:0.66, fontFace:SANS, fontSize:12.5,
+    s.addText(b[1], { x:3.4, y:by, w:9.2, h:0.6, fontFace:SANS, fontSize:12.5,
       color:INK, margin:0, valign:"middle" });
-    by += 0.78;
+    by += 0.68;
   });
   s.addText([
     { text:"Because status drives everything, an interrupted run is never a problem: whatever is still ", options:{} },
@@ -614,7 +609,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:" or ", options:{} },
     { text:"'T'", options:{ fontFace:MONO, bold:true } },
     { text:" is simply picked up by the next run.", options:{} },
-  ], { x:0.5, y:6.9, w:12.33, h:0.35, fontFace:SANS, fontSize:12.5, color:MUTE,
+  ], { x:0.5, y:6.6, w:12.33, h:0.32, fontFace:SANS, fontSize:12, color:MUTE,
        align:"center", margin:0 });
   foot(s);
 })();
@@ -630,14 +625,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const steps = [
     "Lock the dataset, then re-gather its files under the lock",
     "Skip files already listed in an open 'N' record",
-    "Re-check each file on disk or object storage; fix size, checksum and timestamp in GDEXDB if they drifted",
-    "Append a line per file to a dsarch input file, one per dataset and file type",
-    "Close the group once it is big enough and add the bfile placeholder record",
+    "Re-check each file on disk or object storage; fix size, checksum and timestamp in GDEXDB",
+    "Append a line per file to a dsarch input file, per type",
+    "Close the group when big enough; add the bfile record",
   ];
   s.addText(steps.map((t,i)=>({ text:t, options:{ bullet:{type:"number", indent:20},
     breakLine:true, paraSpaceAfter: i===steps.length-1?0:9 } })),
-    { x:0.9, y:2.4, w:5.4, h:2.6, fontFace:SANS, fontSize:13.5, color:INK,
-      margin:0, valign:"top", lineSpacingMultiple:1.1 });
+    { x:0.9, y:2.4, w:5.4, h:2.5, fontFace:SANS, fontSize:12.5, color:INK,
+      margin:0, valign:"top", lineSpacingMultiple:1.08 });
   s.addText("Input file layout", { x:0.75, y:5.0, w:5.5, h:0.35,
     fontFace:SANS, bold:true, fontSize:14, color:DEEP, margin:0 });
   code(s, 0.75, 5.38, 5.55, 1.1,
@@ -736,16 +731,16 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText("For each batch of tar files", { x:0.75, y:1.9, w:5.5, h:0.4,
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
   const steps = [
-    "Walk the status 'T' records and accumulate tars until the batch reaches 90 GB",
-    "Confirm each tar still exists on gdex-glade; if not, reset that record to 'N' to be rebuilt",
-    "Hand the whole list to dsglobus as one transfer \u2014 Drdata first when the flag is 'D', then Backup",
+    "Walk the 'T' records, accumulating tars until the batch hits 90 GB",
+    "Confirm each tar still exists on gdex-glade; if not, reset it to 'N'",
+    "Hand the whole list to dsglobus as one transfer \u2014 Drdata first, then Backup",
     "Wait for both transfers to report finished",
-    "Delete the local tars and set every record in the batch to status 'A'",
+    "Delete the local tars and set every record to status 'A'",
   ];
   s.addText(steps.map((t,i)=>({ text:t, options:{ bullet:{type:"number", indent:20},
     breakLine:true, paraSpaceAfter: i===steps.length-1?0:9 } })),
-    { x:0.9, y:2.4, w:5.4, h:2.9, fontFace:SANS, fontSize:13.5, color:INK,
-      margin:0, valign:"top", lineSpacingMultiple:1.1 });
+    { x:0.9, y:2.4, w:5.4, h:2.8, fontFace:SANS, fontSize:12.5, color:INK,
+      margin:0, valign:"top", lineSpacingMultiple:1.08 });
   s.addShape(p.ShapeType.roundRect, { x:0.75, y:5.4, w:5.55, h:1.05, rectRadius:0.08,
     fill:{color:LIGHT}, line:{color:AMBER, width:1.5} });
   s.addText([
@@ -757,21 +752,21 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   // right: batching visual
   s.addText("Why batch to 90 GB?", { x:6.78, y:1.72, w:6.05, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
-  s.addShape(p.ShapeType.roundRect, { x:6.78, y:2.15, w:6.05, h:2.2, rectRadius:0.1,
+  s.addShape(p.ShapeType.roundRect, { x:6.78, y:2.12, w:6.05, h:1.75, rectRadius:0.1,
     fill:{color:TINT}, line:{color:LINE, width:1} });
   // 18 little tar blocks
   for (let i=0;i<18;i++){
     const col=i%9, row=Math.floor(i/9);
-    s.addShape(p.ShapeType.roundRect, { x:7.05+col*0.6, y:2.45+row*0.5, w:0.5, h:0.38,
+    s.addShape(p.ShapeType.roundRect, { x:7.05+col*0.6, y:2.35+row*0.5, w:0.5, h:0.38,
       rectRadius:0.04, fill:{color:GREEN}, line:{type:"none"} });
   }
   s.addText("18 tar files \u00d7 5 GB  =  one 90 GB dsglobus transfer", {
-    x:7.05, y:3.5, w:5.5, h:0.35, fontFace:SANS, bold:true, fontSize:13,
+    x:7.05, y:3.4, w:5.5, h:0.35, fontFace:SANS, bold:true, fontSize:13,
     color:INK, margin:0 });
-  s.addText("dsarch AQ can upload a tar as it builds it, but only one at a time. dsquasar instead calls dsglobus directly with the whole list, so a batch costs one transfer request rather than eighteen. Each batch is also the unit of parallelism \u2014 one child process per batch.", {
-    x:7.05, y:3.85, w:5.5, h:0.6, fontFace:SANS, fontSize:11, color:MUTE,
+  s.addText("dsarch AQ can upload a tar as it builds it, but only one at a time. dsquasar calls dsglobus with the whole list, so a batch costs one request, not eighteen.", {
+    x:6.78, y:3.95, w:6.05, h:0.5, fontFace:SANS, fontSize:11, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.03 });
-  s.addText("Source and destination paths", { x:6.78, y:4.5, w:6.05, h:0.35,
+  s.addText("Source and destination paths", { x:6.78, y:4.52, w:6.05, h:0.35,
     fontFace:SANS, bold:true, fontSize:14, color:DEEP, margin:0 });
   code(s, 6.78, 4.88, 6.05, 1.0,
     "from  /data/gdex-quasar/d123456/<tar>      (Web)\n      /decsdata/gdex-quasar/d123456/<tar>  (Saved)\nto    /d123456/G001/<tar>", 10.5);
@@ -788,10 +783,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 // ================================================== 14 RE-BACKUP CHANGED FILES
 (() => {
   const s = p.addSlide(); s.background = { color: LIGHT };
-  kicker(s, "Changed Files", AMBER);
-  title(s, "-c ChangeDays  \u2014  Re-Backing Up What Moved");
-  s.addText("A file already on tape can be replaced on disk: a corrected version, a re-generated grid, a re-processed year. The tape copy is then stale. -c tells dsquasar to look past the \u201cnever backed up\u201d test and pick up files whose GDEXDB record changed recently.", {
-    x:0.5, y:1.6, w:6.05, h:1.0, fontFace:SANS, fontSize:14.5, color:INK,
+  kicker(s, "-c ChangeDays", AMBER);
+  title(s, "Re-Backing Up Files That Changed");
+  s.addText("A file already on tape can be replaced on disk: a corrected version, a re-processed year. The tape copy is then stale. -c looks past the \u201cnever backed up\u201d test and picks up files whose GDEXDB record changed recently.", {
+    x:0.5, y:1.6, w:6.05, h:1.0, fontFace:SANS, fontSize:13.5, color:INK,
     margin:0, valign:"top", lineSpacingMultiple:1.1 });
   code(s, 0.5, 2.75, 6.05, 0.55,
     "dsquasar -t d123456 -A 1 -c 30", 14);
@@ -888,18 +883,18 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     x:7.15, y:2.5, w:5.5, h:0.7, fontFace:SANS, fontSize:12.5, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   code(s, 7.15, 3.28, 5.5, 0.5, "dsquasar -a -A 16 -E", 13);
-  reftable(s, 7.15, 3.95, 5.5, [1.75, 3.75], [
-    ["Backed up", "file count and total size already on Quasar"],
-    ["Ready",     "count and size of files waiting to be backed up"],
+  reftable(s, 7.15, 3.88, 5.5, [1.75, 3.75], [
+    ["Backed up", "count and size already on Quasar"],
+    ["Ready",     "count and size still waiting"],
     ["Tar files",  "bfile records by status: N / T / A"],
-    ["Per dataset", "one line each, with a summary row at the end"],
+    ["Per dataset", "one line each, plus a summary row"],
   ], ["Section", "What it shows"], GREEN, GREEN);
-  s.addShape(p.ShapeType.roundRect, { x:7.15, y:5.72, w:5.5, h:0.62,
+  s.addShape(p.ShapeType.roundRect, { x:7.15, y:5.95, w:5.5, h:0.55,
     rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });
   s.addText([
     { text:"Pair with -e or -E.  ", options:{ bold:true, color:DEEP } },
     { text:"Statistics are most useful mailed to the specialist.", options:{} },
-  ], { x:7.35, y:5.72, w:5.1, h:0.62, fontFace:SANS, fontSize:11.5, color:INK,
+  ], { x:7.35, y:5.95, w:5.1, h:0.55, fontFace:SANS, fontSize:11.5, color:INK,
        margin:0, valign:"middle" });
   foot(s);
 })();
@@ -1015,10 +1010,13 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     color:LIGHT, margin:0 });
   s.addText("wind\ndown", { x:tx+tw*23/24, y:ty-0.02, w:tw/24, h:0.46, align:"center",
     valign:"middle", fontFace:SANS, bold:true, fontSize:8, color:AMBERLT, margin:0 });
-  [["0 h", 0], ["23 h  MAXRUNTIME", 23/24], ["24 h  walltime", 1]].forEach(([lbl, f]) => {
-    s.addText(lbl, { x:tx + tw*f - 0.9, y:ty+0.5, w:1.8, h:0.3, align:"center",
-      fontFace:MONO, fontSize:10, color:"97999B", margin:0 });
-  });
+  // 23 h sits above the bar, the two ends below it, so the labels cannot collide
+  s.addText("MAXRUNTIME  23 h", { x:tx+tw*23/24-2.4, y:ty-0.36, w:2.4, h:0.3,
+    align:"right", fontFace:MONO, fontSize:10, color:AMBERLT, margin:0 });
+  s.addText("0 h", { x:tx, y:ty+0.5, w:1.8, h:0.3, align:"left",
+    fontFace:MONO, fontSize:10, color:"97999B", margin:0 });
+  s.addText("24 h  PBS walltime", { x:tx+tw-2.4, y:ty+0.5, w:2.4, h:0.3, align:"right",
+    fontFace:MONO, fontSize:10, color:"97999B", margin:0 });
 
   const rules = [
     ["Before each unit", "The remaining time is compared against what the next tar file or transfer batch is expected to need."],
@@ -1104,8 +1102,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const cards = [
     ["Lock, then work", "The dataset is locked before its files are gathered or its tars are built, and unlocked as soon as that dataset is finished.", DEEP],
     ["Re-check under the lock", "Work is listed before the lock is held, so the list can be hours old. Each candidate is re-read under the lock \u2014 still status 'N'? \u2014 before a tar is spent on it.", TEAL],
-    ["Multi-dataset tars", "One tar file may hold files from many datasets. All of them are locked before tarring and released once the tar is dispatched; if any is held elsewhere, the tar waits for a later run.", GREEN],
-    ["Tar names are safe", "The predicted bid is only a guess. The insert uses AUTOID and the tar is renamed if the database hands back a different id.", AMBER],
+    ["Multi-dataset tars", "One tar may hold files from many datasets. All are locked before tarring and released once it is dispatched; if any is held elsewhere, the tar waits.", GREEN],
+    ["Tar names are safe", "The predicted bid is only a guess. The insert uses AUTOID and the tar is renamed if the database returns a different id.", AMBER],
   ];
   let cx = 0.5;
   cards.forEach(([hd, bd, col]) => {
@@ -1115,8 +1113,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       rectRadius:0.03, fill:{color:col}, line:{type:"none"} });
     s.addText(hd, { x:cx+0.2, y:2.55, w:2.6, h:0.6, fontFace:SANS, bold:true,
       fontSize:13.5, color:col, margin:0, valign:"top" });
-    s.addText(bd, { x:cx+0.2, y:3.2, w:2.6, h:1.5, fontFace:SANS, fontSize:11,
-      color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.08 });
+    s.addText(bd, { x:cx+0.2, y:3.18, w:2.6, h:1.55, fontFace:SANS, fontSize:10.5,
+      color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.05 });
     cx += 3.11;
   });
 
@@ -1256,11 +1254,11 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     px += 4.15;
   });
   s.addText([
-    { text:"All three are installed by the rda_python_dsquasar package and share the rda_python_common configuration.   Backup flags are edited at ", options:{ italic:true, color:MUTE } },
+    { text:"All three ship with rda_python_dsquasar.   Backup flags are edited at ", options:{ italic:true, color:MUTE } },
     { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
       hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
     { text:"  (DSARCH \u2192 Dataset Information).", options:{ italic:true, color:MUTE } },
-  ], { x:0.5, y:6.58, w:12.35, h:0.3, fontFace:SANS, fontSize:11, margin:0 });
+  ], { x:0.5, y:6.52, w:12.35, h:0.32, fontFace:SANS, fontSize:11, margin:0 });
   foot(s);
 })();
 
@@ -1270,12 +1268,12 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   kicker(s, "Troubleshooting", AMBER);
   title(s, "When Something Looks Wrong");
   const tr = [
-    ["Nothing is gathered", "The dataset or group backflag is not set, or the group flag is 'N'. Confirm with  dsquasar -t <dsid> -n  before digging further.", DEEP],
-    ["A repeat submit does nothing", "That is the duplicate check working \u2014 an identical command is already queued or running. Check the dscheck record before forcing anything.", TEAL],
-    ["Records stuck at 'N'", "Tarring never reached them: the run hit the 23-hour guard, or the dataset was locked by another worker. Both resolve on the next run.", GREEN],
-    ["Records stuck at 'T'", "The tar was built but not transferred. Run  -A 4  for that dataset. If the local tar is gone, the record is reset to 'N' and rebuilt.", AMBER],
-    ["Sizes disagree with tape", "Run  -A 8  \u2014 mismatched records are reset to 'N' and redone from the archive on the next gather.", DEEP],
-    ["Locks left on a dataset", "Locks held by a dead process are taken over automatically. To clear them now:  dsquasar -t <dsid> -u", TEAL],
+    ["Nothing is gathered", "The dataset or group backflag is not set. Check with  dsquasar -t <dsid> -n  first.", DEEP],
+    ["A repeat submit does nothing", "The duplicate check working: an identical command is already queued or running.", TEAL],
+    ["Records stuck at 'N'", "Tarring never reached them \u2014 the 23-hour guard, or the dataset was locked. Resolves next run.", GREEN],
+    ["Records stuck at 'T'", "Built but not transferred. Run  -A 4 . If the local tar is gone the record resets to 'N'.", AMBER],
+    ["Sizes disagree with tape", "Run  -A 8  \u2014 mismatched records reset to 'N' and are redone from the archive.", DEEP],
+    ["Locks left on a dataset", "Dead-process locks are taken over automatically. To clear now:  dsquasar -t <dsid> -u", TEAL],
   ];
   let y = 1.58;
   tr.forEach(([hd, bd, col]) => {
@@ -1324,10 +1322,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     rectRadius:0.1, fill:{color:LIGHT}, line:{color:GREEN, width:1.5} });
   s.addText("Two independent copies", { x:7.15, y:2.42, w:5.5, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:GREEN, margin:0 });
-  s.addText("Every tar goes to both end points by default. Drdata is written first, so a run interrupted midway still leaves the disaster-recovery copy complete.", {
-    x:7.15, y:2.78, w:5.5, h:0.6, fontFace:SANS, fontSize:11.5, color:MUTE,
+  s.addText("Every tar goes to both end points by default. Drdata is written first, so an interrupted run still leaves the DR copy complete.", {
+    x:7.15, y:2.78, w:5.5, h:0.55, fontFace:SANS, fontSize:11, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
-  reftable(s, 7.15, 3.45, 5.5, [2.0, 3.5], [
+  reftable(s, 7.15, 3.42, 5.5, [2.0, 3.5], [
     ["gdex-quasar",        "primary Backup copy"],
     ["gdex-quasar-drdata", "disaster-recovery copy"],
   ], ["End point", "Copy"], GREEN, GREEN);
@@ -1384,9 +1382,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText("dsquasar  \u2014  Backing Up the GDEX Archive onto Quasar", {
     x:0.72, y:3.85, w:11.5, h:0.5, fontFace:SANS, fontSize:20,
     color:"C3D7EE", margin:0 });
-  s.addText("dsquasar -h        for the full help document", {
-    x:0.72, y:4.6, w:11.5, h:0.4, fontFace:MONO, fontSize:14,
-    color:AMBERLT, margin:0 });
+  s.addText([
+    { text:"dsquasar -h", options:{ fontFace:MONO, bold:true } },
+    { text:"   \u2022   for the full help document", options:{ fontFace:SANS } },
+  ], { x:0.72, y:4.6, w:11.5, h:0.4, fontSize:14, color:AMBERLT, margin:0 });
   s.addText([
     { text:"Zaihua Ji", options:{ bold:true } },
     { text:"   zji@ucar.edu   \u2022   github.com/NCAR/rda-python-dsquasar", options:{} },
