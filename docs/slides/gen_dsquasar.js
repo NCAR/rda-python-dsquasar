@@ -128,24 +128,29 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
        color:INK, lineSpacingMultiple:1.12, margin:0, valign:"top" });
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:3.65, w:5.3, h:2.95,
     rectRadius:0.1, fill:{color:TINT}, line:{color:LINE, width:1} });
+  s.addShape(p.ShapeType.rect, { x:0.5, y:3.65, w:0.12, h:2.95,
+    fill:{color:DEEP}, line:{type:"none"} });
   s.addText("Driven entirely by GDEXDB flags", {
-    x:0.75, y:3.85, w:4.9, h:0.4, fontFace:SANS, bold:true, fontSize:14,
+    x:0.8, y:3.82, w:4.85, h:0.4, fontFace:SANS, bold:true, fontSize:14.5,
     color:DEEP, margin:0 });
+  s.addShape(p.ShapeType.line, { x:0.8, y:4.24, w:4.68, h:0,
+    line:{color:LINE, width:1} });
+  const gbul = { indent:15, code:"2022", color:DEEP };
   s.addText([
-    { text:"Nothing is configured per run: a dataset joins the backup when ", options:{} },
+    { text:"Nothing is configured per run: a dataset joins the backup when ", options:{ bullet:gbul } },
     { text:"dataset.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" is set, and ", options:{} },
+    { text:" is set; ", options:{} },
     { text:"dsgroup.backflag", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" refines it per group.", options:{} },
-    { text:"\nAny file with ", options:{} },
+    { text:" refines it per group.", options:{ breakLine:true } },
+    { text:"Any file with ", options:{ bullet:gbul } },
     { text:"bid = 0", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" is not backed up yet, and is picked up automatically.", options:{} },
-    { text:"\nEvery tar gets a ", options:{} },
+    { text:" is not backed up yet, and is picked up automatically.", options:{ breakLine:true } },
+    { text:"Every tar gets a ", options:{ bullet:gbul } },
     { text:"bfile", options:{ fontFace:MONO, bold:true, color:DEEP } },
-    { text:" record whose status tracks it from list to tape.", options:{} },
-    { text:"\nWork is resumable: a run that stops leaves its pending records behind.", options:{} },
-  ], { x:0.75, y:4.28, w:4.85, h:2.2, fontFace:SANS, fontSize:12,
-       color:INK, lineSpacingMultiple:1.1, margin:0, valign:"top" });
+    { text:" record whose status tracks it from list to tape.", options:{ breakLine:true } },
+    { text:"Work is resumable: a run that stops leaves its pending records behind.", options:{ bullet:gbul } },
+  ], { x:0.8, y:4.36, w:4.8, h:2.1, fontFace:SANS, fontSize:12,
+       color:INK, lineSpacingMultiple:1.06, paraSpaceAfter:7, margin:0, valign:"top" });
 
   const caps = [
     ["\u2315","Gather","find Web/Saved files still to back up"],
@@ -216,13 +221,9 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       margin:0, valign:"middle" });
   });
   s.addText([
-    { text:"three console commands:  ", options:{ bold:true, color:AMBER } },
+    { text:"one console command:  ", options:{ bold:true, color:AMBER } },
     { text:"dsquasar", options:{ fontFace:MONO, bold:true } },
-    { text:"  (Quasar backup),  ", options:{} },
-    { text:"tacctar", options:{ fontFace:MONO, bold:true } },
-    { text:"  (build TACC tar bundles),  ", options:{} },
-    { text:"taccrec", options:{ fontFace:MONO, bold:true } },
-    { text:"  (recover from TACC bundles).", options:{} },
+    { text:"  backs up the whole GDEX archive onto the Quasar end points.", options:{} },
   ], { x:0.5, y:6.55, w:12.33, h:0.4, fontFace:SANS, fontSize:13, color:INK,
        align:"center", margin:0 });
   foot(s);
@@ -456,11 +457,11 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"  sets ", options:{} },
     { text:"dsgroup.backflag", options:{ fontFace:MONO, bold:true } },
     { text:" for one group", options:{} },
-    { text:"\nPer-run override: ", options:{ bold:true, color:DEEP } },
+    { text:"\nPer-run filter: ", options:{ bold:true, color:DEEP } },
     { text:"-B", options:{ fontFace:MONO, bold:true } },
     { text:" or ", options:{} },
     { text:"-D", options:{ fontFace:MONO, bold:true } },
-    { text:" narrows a run to one copy; neither means both.", options:{} },
+    { text:" limits a run to what is flagged that way; with neither, each dataset follows its own flag.", options:{} },
   ], { x:0.72, y:4.92, w:5.65, h:1.7, fontFace:SANS, fontSize:10.5, color:INK,
        margin:0, valign:"middle", lineSpacingMultiple:1.18 });
 
@@ -1182,8 +1183,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   reftable(s, 0.5, 1.55, 6.05, [1.35, 4.7], [
     ["-a",        "all datasets with a backup flag set"],
     ["-t ids",    "named datasets; SQL % wildcard allowed"],
-    ["-B",        "Backup end point only"],
-    ["-D",        "Backup and Drdata end points"],
+    ["-B",        "only work flagged 'B' (Backup only)"],
+    ["-D",        "only work flagged 'D' (Backup + Drdata)"],
     ["-A bits",   "actions: 1 2 3 4 6 7 8 16 (default 3)"],
     ["-c days",   "with -A 1, re-back up recently changed files"],
     ["-e / -E",   "mail summary / detailed statistics"],
@@ -1201,7 +1202,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["-h",        "display the help document"],
   ], ["Run control", "Meaning"], GREEN, GREEN);
 
-  s.addText("Either -a or -t is required \u2014 without one, dsquasar prints its usage and exits. -B and -D are mutually exclusive; giving neither backs up to both end points.", {
+  s.addText("Either -a or -t is required \u2014 without one, dsquasar prints its usage and exits. -B and -D only narrow what a run processes; with neither, each dataset is backed up per its own backflag.", {
     x:0.5, y:5.05, w:6.05, h:0.7, fontFace:SANS, fontSize:11.5, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   s.addText("Six lines that cover most days", { x:0.5, y:5.8, w:12.35, h:0.35,
@@ -1237,29 +1238,18 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["/decsdata/...",      "Saved file staging path"],
   ], ["Globus & paths", "Role"], GREEN, GREEN);
 
-  s.addText("Related console commands", { x:0.5, y:5.05, w:12.35, h:0.35,
+  s.addText("Where the backup flags are set", { x:0.5, y:5.15, w:12.35, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:INK, margin:0 });
-  const cmds = [
-    ["dsquasar", "back up GDEX archives onto the Quasar end points", DEEP],
-    ["tacctar",  "build tar files for the TACC copy of the archive", TEAL],
-    ["taccrec",  "recover files from the TACC copy", GREEN],
-  ];
-  let px = 0.5;
-  cmds.forEach(([c, d, col]) => {
-    s.addShape(p.ShapeType.roundRect, { x:px, y:5.45, w:4.05, h:1.0,
-      rectRadius:0.08, fill:{color:TINT}, line:{color:col, width:1.2} });
-    s.addText(c, { x:px+0.2, y:5.58, w:3.65, h:0.35, fontFace:MONO, bold:true,
-      fontSize:14, color:col, margin:0 });
-    s.addText(d, { x:px+0.2, y:5.92, w:3.65, h:0.5, fontFace:SANS, fontSize:11,
-      color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.03 });
-    px += 4.15;
-  });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.55, w:12.35, h:1.15,
+    rectRadius:0.08, fill:{color:TINT}, line:{color:DEEP, width:1.2} });
   s.addText([
-    { text:"All three ship with rda_python_dsquasar.   Backup flags are edited at ", options:{ italic:true, color:MUTE } },
+    { text:"dsquasar", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:" ships with rda_python_dsquasar.   Backup flags are edited at ", options:{ color:INK } },
     { text:"gdex.ucar.edu/rda_pg_config/", options:{ bold:true, color:DEEP, fontFace:MONO,
       hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
-    { text:"  (DSARCH \u2192 Dataset Information).", options:{ italic:true, color:MUTE } },
-  ], { x:0.5, y:6.52, w:12.35, h:0.32, fontFace:SANS, fontSize:11, margin:0 });
+    { text:"  (DSARCH \u2192 Dataset Information).", options:{ color:INK } },
+  ], { x:0.75, y:5.55, w:11.85, h:1.15, fontFace:SANS, fontSize:13, color:INK,
+       margin:0, valign:"middle", lineSpacingMultiple:1.1 });
   foot(s);
 })();
 
@@ -1331,10 +1321,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     ["gdex-quasar-drdata", "disaster-recovery copy"],
   ], ["End point", "Copy"], GREEN, GREEN);
 
-  s.addText("The TACC utilities", { x:0.5, y:5.05, w:12.35, h:0.35,
+  s.addText("No separate recovery tool", { x:0.5, y:5.15, w:12.35, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:INK, margin:0 });
-  s.addText("The same package ships tacctar and taccrec for the separate TACC copy of the archive: tacctar builds the tar files, taccrec recovers from them. They follow the same tar-then-transfer shape but talk to the TACC servers rather than the Quasar Globus end points.", {
-    x:0.5, y:5.42, w:12.35, h:0.7, fontFace:SANS, fontSize:12, color:MUTE,
+  s.addText("Nothing extra to install: the same dsarch that stages files for the backup also reads them back. Point -RQ at a dataset and file, and it fetches the right tar from the right end point and unpacks only what you asked for.", {
+    x:0.5, y:5.52, w:12.35, h:0.6, fontFace:SANS, fontSize:12, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.2, w:12.35, h:0.6,
     rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });

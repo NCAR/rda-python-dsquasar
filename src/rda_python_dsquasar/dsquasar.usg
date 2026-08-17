@@ -27,12 +27,16 @@
 
  BACKUP SCOPE
 
-   -B     Quasar Backup only (endpoint gdex-quasar) for the given datasets.
+   -B     Limit the run to what is flagged 'B', Quasar Backup only (endpoint
+          gdex-quasar).
 
-   -D     Quasar Backup & Drdata (gdex-quasar and gdex-quasar-drdata).
+   -D     Limit the run to what is flagged 'D', Quasar Backup & Drdata
+          (gdex-quasar and gdex-quasar-drdata).
 
-          -B and -D are mutually exclusive; the default (neither given) backs up
-          to both the Backup and the Drdata endpoints.
+          -B and -D are mutually exclusive.  They only narrow what a run
+          processes; neither one changes how many copies a file gets.  The
+          default (neither given) backs up according to the dataset.backflag
+          and dsgroup.backflag values.
 
    -c  ChangeDays
           Used with -A 1 to re-back up files that changed within the given
