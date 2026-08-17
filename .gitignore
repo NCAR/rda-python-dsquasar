@@ -1,2 +1,5 @@
 /.project
 /.pydevproject
+
+# rendered from docs/slides/gen_dsquasar.js; regenerate instead of committing
+/docs/slides/dsquasar_guide.pdf
