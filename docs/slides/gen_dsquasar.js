@@ -27,29 +27,84 @@ const LOGO_W = 2.05, LOGO_H = 0.56;           // aspect 1005:276
 const GDEX_COLOR = "gdex_lockup_color.png";   // full-colour, for light backgrounds
 const GDEX_WHITE = "gdex_lockup_white.png";   // white text, for dark backgrounds
 const GDEX_W = 1.9, GDEX_H = 0.96;            // aspect 1000:505
+// ---- cover art from the template "Cover - Blue" layout (slideLayout2) ----
+const COVER_EARTH = "cover_earth.jpg";        // GDEX Earth banner, cropped as in template
+const COVER_BLUE  = "cover_blue.png";         // NCAR blue wave panel (transparent right edge)
+// ---- interior background from the template "Bold Statement" layout (slideLayout4) ----
+const INTERIOR_BG = "interior_bg.png";        // cyan wave lines over the dk2 blue field
+// ---- interior background from the template content layouts (slideLayout3 / 8) ----
+const INTERIOR_LIGHT = "interior_light.jpg";  // white field with faint wave art on the right
+const DECK_NAME = "DSQUASAR  \u2022  QUASAR BACKUP GUIDE";
+
+// Chrome of the template interior content slides (slides 11 & 12 / slideLayout3, 8):
+// white field with faint wave art, NSF NCAR logo top-right, GDEX lockup
+// bottom-right, slide number and deck name bottom-left split by a short rule.
+// The static part lives on masters so the artwork is embedded only once.
+p.defineSlideMaster({
+  title: "INTERIOR",
+  background: { path: INTERIOR_LIGHT },
+  objects: [
+    { image: { path: LOGO_COLOR, x:10.59, y:0.44, w:2.07, h:0.57 } },
+    { image: { path: GDEX_COLOR, x:11.61, y:6.70, w:1.05, h:0.53 } },
+    { line:  { x:0.67, y:7.04, w:0, h:0.22, line:{ color:INK, width:0.75 } } },
+  ],
+});
+// Same chrome without the bottom-right GDEX lockup, for slides whose content
+// reaches into that corner (a partly covered logo looks worse than none).
+p.defineSlideMaster({
+  title: "INTERIOR_NG",
+  background: { path: INTERIOR_LIGHT },
+  objects: [
+    { image: { path: LOGO_COLOR, x:10.59, y:0.44, w:2.07, h:0.57 } },
+    { line:  { x:0.67, y:7.04, w:0, h:0.22, line:{ color:INK, width:0.75 } } },
+  ],
+});
+// Same chrome on the blue field of the template "Bold Statement" layout,
+// for the occasional dark content slide.
+p.defineSlideMaster({
+  title: "INTERIOR_DARK",
+  background: { color: DEEP },
+  objects: [
+    { image: { path: INTERIOR_BG, x:0, y:0, w:W, h:H } },
+    { image: { path: LOGO_WHITE, x:10.59, y:0.44, w:2.07, h:0.57 } },
+    { image: { path: GDEX_WHITE, x:11.61, y:6.70, w:1.05, h:0.53 } },
+    { line:  { x:0.67, y:7.04, w:0, h:0.22, line:{ color:LIGHT, width:0.75 } } },
+  ],
+});
 
 let n = 0;
-function logo(s, dark) {
-  s.addImage({ path: dark ? LOGO_WHITE : LOGO_COLOR,
-    x: W-LOGO_W-0.4, y: 0.3, w: LOGO_W, h: LOGO_H });
-}
 function foot(s, dark) {
   n++;
-  logo(s, dark);
-  s.addText("dsquasar  \u2022  Quasar Backup Guide", {
-    x:0.5, y:H-0.42, w:8, h:0.3, fontFace:SANS, fontSize:9,
-    color: dark?"97999B":MUTE, align:"left", margin:0 });
-  s.addText(String(n), {
-    x:W-0.9, y:H-0.42, w:0.4, h:0.3, fontFace:SANS, fontSize:9,
-    color: dark?"97999B":MUTE, align:"right", margin:0 });
+  const c = dark ? LIGHT : INK;
+  s.addText(String(n), { x:0.28, y:7.05, w:0.4, h:0.3, fontFace:SANS,
+    fontSize:9.5, bold:true, color:c, margin:0 });
+  s.addText(DECK_NAME, { x:0.86, y:7.05, w:6, h:0.3, fontFace:SANS,
+    fontSize:9.5, bold:true, color:c, margin:0 });
 }
 function kicker(s, txt, color) {
   s.addText(txt.toUpperCase(), { x:0.5, y:0.42, w:9, h:0.3, fontFace:SANS,
     fontSize:12, bold:true, color:color||TEAL, charSpacing:2, margin:0 });
 }
-function title(s, txt) {
+function title(s, txt, fs) {
   s.addText(txt, { x:0.5, y:0.72, w:10.2, h:0.7, fontFace:SERIF,
-    fontSize:32, bold:true, color:INK, margin:0 });
+    fontSize:fs||32, bold:true, color:INK, margin:0 });
+}
+// Chrome of the template "Interior - Bold Statement" layout (slideLayout4):
+// blue field + cyan wave art, GDEX lockup top-left, NSF NCAR logo top-right,
+// slide number and presentation name bottom-left split by a short white rule.
+const BOLD_X = 1.67, BOLD_W = 10.0;   // template title-box left margin / width
+function boldStatement(s) {
+  s.background = { color: DEEP };
+  s.addImage({ path: INTERIOR_BG, x:0, y:0, w:W, h:H });
+  s.addImage({ path: GDEX_WHITE, x:0.67, y:0.40, w:1.12, h:0.57 });
+  s.addImage({ path: LOGO_WHITE, x:10.59, y:0.43, w:2.07, h:0.57 });
+  n++;
+  s.addText(String(n), { x:0.28, y:7.05, w:0.4, h:0.3, fontFace:SANS,
+    fontSize:9.5, bold:true, color:LIGHT, margin:0 });
+  s.addShape(p.ShapeType.line, { x:0.67, y:7.04, w:0, h:0.22,
+    line:{color:LIGHT, width:0.75} });
+  s.addText(DECK_NAME, { x:0.86, y:7.05, w:6, h:0.3, fontFace:SANS,
+    fontSize:9.5, bold:true, color:LIGHT, margin:0 });
 }
 function circ(s, x, y, d, fill, glyph, gcolor, gsize) {
   s.addShape(p.ShapeType.ellipse, { x,y,w:d,h:d, fill:{color:fill},
@@ -80,40 +135,50 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 }
 
 // ============================================================ 1 TITLE
+// Follows the "Cover - Blue" cover slide of the official NSF NCAR GDEX 2026
+// template (slide 2 / slideLayout2): Earth banner on the right, blue wave
+// panel on the left, NSF NCAR + GDEX white logos on top, orange accent bar
+// beside a left-aligned text stack divided by a short cyan rule.
 (() => {
   const s = p.addSlide(); s.background = { color: MID };
-  s.addImage({ path: LOGO_WHITE, x:0.7, y:0.6, w:2.8, h:0.77 });
-  s.addImage({ path: GDEX_WHITE, x:W-GDEX_W-0.6, y:0.7, w:GDEX_W, h:GDEX_H });
-  s.addText("dsquasar", { x:0.7, y:2.35, w:9, h:1.4, fontFace:SERIF,
-    fontSize:78, bold:true, color:LIGHT, margin:0 });
-  s.addText("Backing Up the GDEX Archive onto Quasar", {
-    x:0.72, y:3.7, w:11.5, h:0.6, fontFace:SANS, fontSize:24,
-    color:"C3D7EE", margin:0 });
-  s.addText([
-    { text:"Gather \u2192 List \u2192 Tar \u2192 Transfer, tracked end-to-end in GDEXDB", options:{} }
-  ], { x:0.72, y:4.35, w:11, h:0.5, fontFace:SANS, italic:true,
-       fontSize:15, color:"C3D7EE", margin:0 });
-  const chips = ["Backup & Disaster Recovery", "Batch Operations", "Updated 2026-08"];
-  let cx = 0.72;
-  chips.forEach(c => {
-    const w = 0.28 + c.length*0.098;
-    s.addShape(p.ShapeType.roundRect, { x:cx, y:5.35, w, h:0.5,
-      rectRadius:0.1, fill:{color:"0B2A63"}, line:{color:"2C4E7D", width:1} });
-    s.addText(c, { x:cx, y:5.35, w, h:0.5, align:"center", valign:"middle",
-      fontFace:SANS, fontSize:12, bold:true, color:"C3D7EE", margin:0 });
-    cx += w + 0.2;
-  });
-  s.addText([
-    { text:"Zaihua Ji", options:{ bold:true } },
-    { text:"   zji@ucar.edu", options:{} },
-  ], { x:0.72, y:6.05, w:11, h:0.4, fontFace:SANS, fontSize:13, color:"C3D7EE", margin:0 });
-  s.addText("Tars through  dsarch AQ  \u2022  uploads through  dsglobus  \u2022  scheduled by  dscheck", {
-    x:0.72, y:6.5, w:11, h:0.4, fontFace:MONO, fontSize:12, color:"97999B", margin:0 });
+  // cover art: Earth banner (right) overlaid by the blue wave panel (left)
+  s.addImage({ path: COVER_EARTH, x:3.37, y:0, w:9.96, h:H });
+  s.addImage({ path: COVER_BLUE,  x:0,    y:0, w:9.50, h:H });
+  // official NSF NCAR logo, top-left
+  s.addImage({ path: LOGO_WHITE, x:0.92, y:0.83, w:4.15, h:1.14 });
+  // official GDEX lockup, top-right (the platform brand)
+  s.addImage({ path: GDEX_WHITE, x:9.02, y:0.79, w:2.42, h:1.22 });
+  // brand orange accent bar next to the text stack
+  s.addShape(p.ShapeType.rect, { x:0, y:2.47, w:0.23, h:3.75,
+    fill:{color:"FAA119"}, line:{type:"none"} });
+
+  const TX = 1.01, TW = 5.5;
+  s.addText("UPDATED AUGUST 2026", { x:TX, y:2.19, w:TW, h:0.3,
+    fontFace:SANS, fontSize:11, bold:true, color:LIGHT, charSpacing:1, margin:0 });
+  s.addText("dsquasar: Backing Up the GDEX Archive onto Quasar", {
+    x:TX, y:2.55, w:TW, h:1.85, fontFace:SERIF, fontSize:29, bold:true,
+    color:LIGHT, lineSpacingMultiple:0.95, margin:0, valign:"top" });
+  s.addText("Gather \u2192 List \u2192 Tar \u2192 Transfer, tracked end-to-end in GDEXDB", {
+    x:TX, y:4.45, w:TW, h:0.4, fontFace:SANS, fontSize:13, bold:true,
+    color:LIGHT, margin:0 });
+  // short cyan rule, as on the template cover
+  s.addShape(p.ShapeType.line, { x:TX, y:5.01, w:0.88, h:0,
+    line:{color:AMBERLT, width:3} });
+  s.addText("Zaihua Ji", { x:TX, y:5.28, w:TW, h:0.35, fontFace:SANS,
+    fontSize:16, bold:true, color:LIGHT, margin:0 });
+  s.addText("Software Engineer  \u2022  zji@ucar.edu", { x:TX, y:5.63, w:TW, h:0.35,
+    fontFace:SANS, fontSize:16, color:LIGHT, margin:0 });
+  s.addText("BACKUP & DISASTER RECOVERY \u2022 BATCH OPERATIONS \u2022 COMPANION UTILITY TO DSARCH", {
+    x:TX, y:6.08, w:TW, h:0.5, fontFace:SANS, fontSize:9.5, color:LIGHT,
+    lineSpacingMultiple:1.1, margin:0 });
+  s.addText("Tars are built through dsarch AQ, uploaded through dsglobus, and scheduled by dscheck \u2014 every step tracked in GDEXDB.", {
+    x:TX, y:6.80, w:TW, h:0.45, fontFace:SANS, fontSize:7, italic:true,
+    color:LIGHT, lineSpacingMultiple:1.1, margin:0 });
 })();
 
 // ============================================================ 2 OVERVIEW
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Overview", TEAL); title(s, "What is dsquasar?");
   s.addText([
     { text:"dsquasar", options:{ bold:true, color:DEEP } },
@@ -178,7 +243,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 3 INSTALL & RESOURCES
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Get it & learn it", TEAL); title(s, "Install & Resources");
   const cards = [
     { c:DEEP,  ic:"\u2325", t:"GitHub Repository",
@@ -231,7 +296,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 4 PIPELINE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "How it works", TEAL); title(s, "The Four-Stage Backup Pipeline");
   const stages = [
     ["1","GDEX Files","Web & Saved files with bid = 0 on disk or object store", DEEP],
@@ -282,8 +347,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 5 DATA MODEL
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
-  kicker(s, "Data model", TEAL); title(s, "What dsquasar Reads and Writes in GDEXDB");
+  const s = p.addSlide({ masterName:"INTERIOR" });
+  kicker(s, "Data model", TEAL); title(s, "What dsquasar Reads and Writes in GDEXDB", 29);
   const cards = [
     ["dataset / dsgroup","Backup Flags","read", DEEP,
       ["backflag 'B' \u2014 Backup copy only","backflag 'D' \u2014 Backup + Drdata copy","backflag 'N' \u2014 do not back up","group flag 'P' inherits the dataset flag","dataset.pid / lockhost \u2014 the run lock"]],
@@ -315,14 +380,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText([
     { text:"The bfile note is the recovery key:  ", options:{ bold:true, color:DEEP } },
     { text:"it records every member file, its size and checksum, so a tar can be re-listed, re-tarred, or restored without re-reading the archive.", options:{} },
-  ], { x:0.5, y:6.45, w:12.3, h:0.4, fontFace:SANS, fontSize:13, color:MUTE,
+  ], { x:0.5, y:6.42, w:10.9, h:0.45, fontFace:SANS, fontSize:11.5, color:MUTE,
        align:"center", margin:0 });
   foot(s);
 })();
 
 // ============================================================ 6 COMMAND ANATOMY
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "General usage", TEAL); title(s, "Anatomy of a Command");
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:1.65, w:12.3, h:0.95,
     rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
@@ -377,7 +442,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 7 QUICK START
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Quick start", GREEN); title(s, "Six Commands That Cover Most Work");
   const ex = [
     ["See what is waiting","Counts only \u2014 gathers and reports, performs no backup.",
@@ -413,14 +478,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:"A file is a candidate only while ", options:{} },
     { text:"bid = 0", options:{ fontFace:MONO, bold:true } },
     { text:", so re-running never redoes finished work.", options:{} },
-  ], { x:0.5, y:6.55, w:12.33, h:0.35, fontFace:SANS, fontSize:13, color:INK,
+  ], { x:0.5, y:6.5, w:10.9, h:0.35, fontFace:SANS, fontSize:11.5, color:INK,
        align:"center", margin:0 });
   foot(s);
 })();
 
 // ============================================================ 8 BACKUP FLAGS & SCOPE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Backup scope", TEAL); title(s, "Backup Flags: What Gets Two Copies");
   // left: the enrolling field, then the flag table
   s.addText([
@@ -503,7 +568,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 9 ACTION FAMILY
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Actions", AMBER); title(s, "The -A Action Bitmask");
   const acts = [
     ["-A 1","Create Input","list Web/Saved files, add bfile records 'N'", DEEP],
@@ -559,7 +624,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 10 STATUS LIFECYCLE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Backup records", TEAL); title(s, "The bfile Status Lifecycle");
   const sts = [
     ["N","Input Files","the list exists, the tar does not yet", DEEP],
@@ -611,14 +676,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     { text:" or ", options:{} },
     { text:"'T'", options:{ fontFace:MONO, bold:true } },
     { text:" is simply picked up by the next run.", options:{} },
-  ], { x:0.5, y:6.6, w:12.33, h:0.32, fontFace:SANS, fontSize:12, color:MUTE,
+  ], { x:0.5, y:6.52, w:10.9, h:0.4, fontFace:SANS, fontSize:11.5, color:MUTE,
        align:"center", margin:0 });
   foot(s);
 })();
 
 // ============================================================ 11 -A 1 DEEP DIVE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Actions", AMBER); title(s, "-A 1 Deep Dive: Building the Input Lists");
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:1.7, w:6.0, h:4.9, rectRadius:0.1,
     fill:{color:TINT}, line:{color:LINE, width:1} });
@@ -666,7 +731,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================================ 12 -A 2 DEEP DIVE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Actions", AMBER); title(s, "-A 2 Deep Dive: Building the Tar Files");
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:1.7, w:12.3, h:1.0, rectRadius:0.08,
     fill:{color:MID}, line:{type:"none"} });
@@ -719,14 +784,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText([
     { text:"In an -A 3 run both phases tar.  ", options:{ bold:true, color:DEEP } },
     { text:"A list created this run is tarred right away, and any 'N' record left over from before is tarred too.", options:{} },
-  ], { x:0.5, y:6.6, w:12.33, h:0.4, fontFace:SANS, fontSize:13, color:INK,
+  ], { x:0.5, y:6.55, w:10.9, h:0.4, fontFace:SANS, fontSize:11.5, color:INK,
        align:"center", margin:0 });
   foot(s);
 })();
 
 // ============================================================ 13 -A 4 DEEP DIVE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Actions", AMBER); title(s, "-A 4 Deep Dive: Transferring to Quasar");
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:1.7, w:6.0, h:4.9, rectRadius:0.1,
     fill:{color:TINT}, line:{color:LINE, width:1} });
@@ -784,7 +849,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ================================================== 14 RE-BACKUP CHANGED FILES
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "-c ChangeDays", AMBER);
   title(s, "Re-Backing Up Files That Changed");
   s.addText("A file already on tape can be replaced on disk: a corrected version, a re-processed year. The tape copy is then stale. -c looks past the \u201cnever backed up\u201d test and picks up files whose GDEXDB record changed recently.", {
@@ -846,7 +911,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 15 -A 8 CHECK / -A 16 STATS
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Verify & Report", GREEN);
   title(s, "-A 8 Integrity Check  \u2022  -A 16 Statistics");
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:1.6, w:6.05, h:4.95,
@@ -903,7 +968,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 16 SCHEDULING / DELAYED MODE
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Scheduling", TEAL);
   title(s, "-d PBS  \u2014  Running as a Batch Job");
   s.addText("Backing up the whole archive is far too big for a login session. -d turns the run into a delayed job: dsquasar writes a dscheck record and exits, and the dscheck daemon submits it to PBS when a slot is free.", {
@@ -942,7 +1007,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 17 MULTIPROCESSING SIZING
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Parallelism", AMBER);
   title(s, "How Many CPUs Does the Job Ask For?");
   s.addText("Tarring and uploading have very different shapes, so they are sized independently and the larger request wins \u2014 the phases run one after the other inside a single PBS allocation, sharing one ncpus.", {
@@ -992,10 +1057,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 18 PBS WALLTIME GUARD
 (() => {
-  const s = p.addSlide(); s.background = { color: MID };
+  const s = p.addSlide({ masterName:"INTERIOR_DARK" });
   kicker(s, "Walltime Guard", AMBERLT);
   s.addText("Stopping Cleanly Before PBS Kills the Job", {
-    x:0.5, y:0.72, w:11, h:0.7, fontFace:SERIF, fontSize:32, bold:true,
+    x:0.5, y:0.72, w:10.2, h:0.7, fontFace:SERIF, fontSize:32, bold:true,
     color:LIGHT, margin:0 });
   s.addText("The queue gives the job 24 hours. A tar file killed halfway through leaves a partial file on disk and a bfile record that claims work is in progress. So dsquasar watches the clock itself.", {
     x:0.5, y:1.62, w:12.35, h:0.6, fontFace:SANS, fontSize:14.5, color:"C3D7EE",
@@ -1044,7 +1109,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 19 WORKER SLOTS
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Worker Slots", TEAL);
   title(s, "-W / -w  \u2014  When One Batch Job Hangs");
   s.addText("The -A 3 gather runs from cron several times a day, so a crashed job restarts quickly \u2014 dead locks are taken over and dscheck retries. The gap was a job that is alive but making no progress: it holds the duplicate key and every later cron line simply blocks.", {
@@ -1094,7 +1159,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 20 LOCKING & CONCURRENCY
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Locking", GREEN);
   title(s, "Keeping Two Runs Off the Same Files");
   s.addText("Every mutual exclusion in dsquasar is a dataset lock \u2014 a pid and host stamped on the dataset record, claimed atomically and taken over automatically when the owning process is dead. There is no lock at the tar-file level.", {
@@ -1134,7 +1199,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 21 EMAIL REPORTING
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reporting", TEAL);
   title(s, "-e / -E  \u2014  Mail to the Specialist");
   s.addText("A batch run leaves no one watching the screen, so dsquasar mails the outcome to the dataset specialist. Two levels of detail.", {
@@ -1170,14 +1235,14 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText([
     { text:"The walltime guard mails too.  ", options:{ bold:true, color:DEEP } },
     { text:"A batch job that stops at 23 hours sends a progress note listing what finished and what is left, so an incomplete run is visible rather than silent.", options:{} },
-  ], { x:0.72, y:6.28, w:11.9, h:0.6, fontFace:SANS, fontSize:11.5, color:INK,
+  ], { x:0.72, y:6.28, w:10.7, h:0.6, fontFace:SANS, fontSize:11.5, color:INK,
        margin:0, valign:"middle" });
   foot(s);
 })();
 
 // ============================================== 22 KEY MODE OPTIONS
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reference", AMBER);
   title(s, "Option Reference");
   reftable(s, 0.5, 1.55, 6.05, [1.35, 4.7], [
@@ -1216,7 +1281,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 23 ENVIRONMENT & FILES
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Environment", TEAL);
   title(s, "Where Things Live");
   s.addText("dsquasar always runs from the Quasar backup work directory \u2014 it changes there itself, so it can be launched from anywhere.", {
@@ -1255,7 +1320,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 24 TROUBLESHOOTING
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Troubleshooting", AMBER);
   title(s, "When Something Looks Wrong");
   const tr = [
@@ -1278,19 +1343,19 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       color:INK, margin:0, valign:"middle", lineSpacingMultiple:1.0 });
     y += 0.8;
   });
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:y+0.02, w:12.35, h:0.55,
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:y+0.02, w:10.9, h:0.55,
     rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
   s.addText([
     { text:"Statuses only ever move forward on success.  ", options:{ bold:true, color:AMBERLT } },
     { text:"Every backwards step \u2014 T\u2192N, A\u2192N \u2014 is deliberate, and just means the work is queued to be done again.", options:{ color:"C3D7EE" } },
-  ], { x:0.72, y:y+0.02, w:11.9, h:0.55, fontFace:SANS, fontSize:11.5,
+  ], { x:0.72, y:y+0.02, w:10.46, h:0.55, fontFace:SANS, fontSize:11,
        margin:0, valign:"middle" });
   foot(s);
 })();
 
 // ============================================== 25 RECOVERY
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Recovery", GREEN);
   title(s, "Getting Data Back Off Tape");
   s.addText("Backing up is only half the point. Because every tar is recorded in GDEXDB with the datasets and files it contains, recovery is a lookup rather than a search of the tape.", {
@@ -1338,50 +1403,52 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
 // ============================================== 26 CLOSING
 (() => {
-  const s = p.addSlide(); s.background = { color: LIGHT };
-  kicker(s, "Wrap Up", TEAL);
-  title(s, "Six Things Worth Remembering");
+  const s = p.addSlide(); boldStatement(s);
+  s.addText("RECAP", { x:BOLD_X, y:1.16, w:8, h:0.35, fontFace:SANS, bold:true,
+    fontSize:13, color:AMBERLT, charSpacing:2, margin:0 });
+  s.addText("Six Things Worth Remembering", { x:BOLD_X, y:1.54, w:BOLD_W, h:0.8,
+    fontFace:SERIF, bold:true, fontSize:40, color:LIGHT, margin:0 });
   const pts = [
-    ["dataset.backflag enrolls", "Setting that one field puts a dataset under backup; dsgroup.backflag refines it. -t narrows a run, it does not override a flag.", DEEP],
-    ["-A 3 is the working default", "Create the input lists and build the tars in one pass. -A 4 ships them. -A 7 does both.", TEAL],
-    ["Status is the whole story", "N listed, T tarred, A archived. Backwards moves are deliberate and simply requeue the work.", GREEN],
-    ["Tar size is the economics", "5 GB target tars batched into 90 GB transfers is what makes tape and Globus efficient.", AMBER],
-    ["The dataset lock is the only lock", "Everything about concurrency \u2014 workers, re-checks, multi-dataset tars \u2014 is built on it.", DEEP],
-    ["Nothing is lost by stopping", "The 23-hour guard, the retry limit and the resumable statuses mean an interrupted run just continues later.", TEAL],
+    ["dataset.backflag enrolls", "Setting that one field puts a dataset under backup; dsgroup.backflag refines it. -t narrows a run, it does not override a flag."],
+    ["-A 3 is the working default", "Create the input lists and build the tars in one pass. -A 4 ships them. -A 7 does both."],
+    ["Status is the whole story", "N listed, T tarred, A archived. Backwards moves are deliberate and simply requeue the work."],
+    ["Tar size is the economics", "5 GB target tars batched into 90 GB transfers is what makes tape and Globus efficient."],
+    ["The dataset lock is the only lock", "Everything about concurrency \u2014 workers, re-checks, multi-dataset tars \u2014 is built on it."],
+    ["Nothing is lost by stopping", "The 23-hour guard, the retry limit and the resumable statuses mean an interrupted run just continues later."],
   ];
-  let px = 0.5, py = 1.6;
-  pts.forEach(([hd, bd, col], i) => {
-    s.addShape(p.ShapeType.roundRect, { x:px, y:py, w:6.05, h:1.5,
-      rectRadius:0.1, fill:{color:LIGHT}, line:{color:LINE, width:1} });
-    circ(s, px+0.22, py+0.24, 0.46, col, String(i+1), LIGHT, 14);
-    s.addText(hd, { x:px+0.82, y:py+0.18, w:5.0, h:0.42, fontFace:SANS, bold:true,
-      fontSize:13.5, color:col, margin:0, valign:"middle" });
-    s.addText(bd, { x:px+0.82, y:py+0.62, w:5.0, h:0.7, fontFace:SANS, fontSize:11,
-      color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.05 });
-    if (i % 2 === 0) { px += 6.35; } else { px = 0.5; py += 1.65; }
+  let px = 0.9, py = 2.68;
+  pts.forEach(([hd, bd], i) => {
+    s.addShape(p.ShapeType.roundRect, { x:px, y:py, w:5.6, h:1.28,
+      rectRadius:0.1, fill:{color:INK}, line:{color:"2C6FB8", width:1} });
+    circ(s, px+0.22, py+0.2, 0.44, AMBERLT, String(i+1), INK, 14);
+    s.addText(hd, { x:px+0.78, y:py+0.14, w:4.6, h:0.38, fontFace:SANS, bold:true,
+      fontSize:13, color:AMBERLT, margin:0, valign:"middle" });
+    s.addText(bd, { x:px+0.78, y:py+0.54, w:4.6, h:0.64, fontFace:SANS, fontSize:10.5,
+      color:"D5E8FA", margin:0, valign:"top", lineSpacingMultiple:1.05 });
+    if (i % 2 === 0) { px += 5.95; } else { px = 0.9; py += 1.36; }
   });
-  foot(s);
 })();
 
 // ============================================== 27 QUESTIONS
 (() => {
-  const s = p.addSlide(); s.background = { color: MID };
-  s.addImage({ path: LOGO_WHITE, x:0.7, y:0.6, w:2.8, h:0.77 });
-  s.addImage({ path: GDEX_WHITE, x:W-GDEX_W-0.6, y:0.7, w:GDEX_W, h:GDEX_H });
-  s.addText("Questions?", { x:0.7, y:2.5, w:9, h:1.3, fontFace:SERIF,
-    fontSize:66, bold:true, color:LIGHT, margin:0 });
-  s.addText("dsquasar  \u2014  Backing Up the GDEX Archive onto Quasar", {
-    x:0.72, y:3.85, w:11.5, h:0.5, fontFace:SANS, fontSize:20,
-    color:"C3D7EE", margin:0 });
+  const s = p.addSlide(); boldStatement(s);
+  // template title box: x 1.67, y 1.18, w 10.0, h 5.56, vertically centred
+  s.addText("Any Questions?", { x:BOLD_X, y:1.18, w:BOLD_W, h:3.0, fontFace:SERIF,
+    bold:true, fontSize:54, color:LIGHT, margin:0, valign:"bottom" });
+  s.addShape(p.ShapeType.line, { x:BOLD_X, y:4.55, w:0.88, h:0,
+    line:{color:AMBERLT, width:3} });
+  s.addText("Thank you \u2014 dsquasar keeps a tape copy of the whole GDEX archive, run after run.", {
+    x:BOLD_X, y:4.85, w:BOLD_W, h:0.5, fontFace:SANS, fontSize:16, color:"D5E8FA",
+    margin:0 });
+  s.addShape(p.ShapeType.roundRect, { x:BOLD_X, y:5.65, w:BOLD_W, h:0.75,
+    rectRadius:0.1, fill:{color:INK}, line:{color:AMBERLT, width:1} });
   s.addText([
-    { text:"dsquasar -h", options:{ fontFace:MONO, bold:true } },
-    { text:"   \u2022   for the full help document", options:{ fontFace:SANS } },
-  ], { x:0.72, y:4.6, w:11.5, h:0.4, fontSize:14, color:AMBERLT, margin:0 });
-  s.addText([
-    { text:"Zaihua Ji", options:{ bold:true } },
-    { text:"   zji@ucar.edu   \u2022   github.com/NCAR/rda-python-dsquasar", options:{} },
-  ], { x:0.72, y:5.6, w:11.5, h:0.4, fontFace:SANS, fontSize:14,
-       color:"C3D7EE", margin:0 });
+    { text:"Zaihua Ji   \u2022   zji@ucar.edu   \u2022   ", options:{ color:"D5E8FA" } },
+    { text:"dsquasar -h", options:{ fontFace:MONO, color:LIGHT } },
+    { text:"   \u2022   dsquasar.usg   \u2022   ", options:{ color:"D5E8FA" } },
+    { text:"github.com/NCAR/rda-python-dsquasar", options:{ color:"D5E8FA", hyperlink:{ url:"https://github.com/NCAR/rda-python-dsquasar" } } },
+  ], { x:BOLD_X+0.25, y:5.65, w:BOLD_W-0.5, h:0.75, fontFace:SANS, fontSize:12.5,
+       valign:"middle", margin:0 });
 })();
 
 p.writeFile({ fileName: "dsquasar_guide.pptx" }).then(f => console.log("wrote", f));
