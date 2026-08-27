@@ -90,9 +90,10 @@ class DsQuasar(PgCMD, PgSplit):
       self.MPTMAX = 12            # maximum number of batch processes for tarring
       # uploading (BCKACT) forks one child per BCKSIZE transfer batch (~BCKSIZE/TARSIZE
       # tar files each), so far fewer parallel units than tar files: use a large
-      # per-process limit to avoid over-reserving cpus.
-      self.MPBLIMIT = 900         # tar file count per batch process for uploading
-      self.MPBMAX = 8             # maximum number of batch processes for uploading
+      # per-process limit to avoid over-reserving cpus. Globus runs only a few
+      # concurrent transfers, so extra upload processes just wait on it.
+      self.MPBLIMIT = 5000        # tar file count per batch process for uploading
+      self.MPBMAX = 4             # maximum number of batch processes for uploading
       self.MAXRUNTIME = 23*3600   # 23 hours; stop before the 24-hour PBS walltime
       self.ONEHOUR = 3600         # seconds; time headroom needed to finish before walltime
       # a repeat submit normally blocks as a duplicate while the batch job is running. if
