@@ -106,6 +106,7 @@ class DsQuasar(PgCMD, PgSplit):
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
+         'mgiven' : 0,      # set when -m is on the command line, to keep an explicit -m 1
          'action' : self.CTACTS,
          'chgdays' : 0,
          'backflag' : None,
@@ -160,6 +161,7 @@ class DsQuasar(PgCMD, PgSplit):
             elif option == 'm':
                self.PGBACK['mproc'] = int(arg)
                if self.PGBACK['mproc'] < 1: self.pglog(arg +": Multiple Processes(-m) must be > 0", self.LGWNEX)
+               self.PGBACK['mgiven'] = 1
                option = None
             elif option == 'A':
                self.PGBACK['action'] = int(arg)
@@ -468,15 +470,16 @@ class DsQuasar(PgCMD, PgSplit):
             if not pgrec:
                qoptions = '-l walltime=24:00:00'
                if acts&self.NBACTS != acts:
-                  if self.PGBACK['mproc'] < 2: self.PGBACK['mproc'] = self.batch_process_count(acts)
+                  if not self.PGBACK['mgiven']: self.PGBACK['mproc'] = self.batch_process_count(acts)
                   if self.PGBACK['mproc'] > 1:
                      qoptions += ",select=1:ncpus={0}:mem={0}gb".format(self.PGBACK['mproc'])
                self.set_one_boption('qoptions', qoptions, 1)
          self.init_dscheck(0, '', "dsquasar", dsid, cact, self.PGBACK['workdir'],
                             self.PGLOG['CURUID'], self.bopts, self.LOGWRN)
          # on the PBS batch run, take the process count from the reserved ncpus in qoptions
-         # instead of recomputing it
-         if self.PGLOG['DSCHECK'] and self.PGBACK['mproc'] < 2 and acts&self.NBACTS != acts:
+         # instead of recomputing it. an explicit -m N on the command line wins over the
+         # reserved count, including -m 1 to force a single process
+         if self.PGLOG['DSCHECK'] and not self.PGBACK['mgiven'] and acts&self.NBACTS != acts:
             pgrec = self.pgget('dscheck', 'qoptions',
                                "cindex = {}".format(self.PGLOG['DSCHECK']['cindex']), self.LGEREX)
             if pgrec and pgrec['qoptions']:
