@@ -80,9 +80,12 @@
           to Y.
 
    -m  ProcessCount
-          Number of concurrent child processes.  Defaults to 1.  In delay mode
-          the process count travels through the reserved PBS cpus rather than
-          the command line.
+          Number of concurrent child processes.  Defaults to 1.  When -m is not
+          given, a delayed backup run sizes the count from the number of tar
+          files it expects to handle and reserves matching PBS cpus, so in delay
+          mode the process count normally travels through the reserved cpus
+          rather than the command line.  An explicit -m overrides that sizing,
+          and -m 1 forces a single process.
 
    -n     Gather and show the available file counts only; no backup actions are
           performed.
