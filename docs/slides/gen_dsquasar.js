@@ -403,7 +403,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const blocks = [
     ["Scope","required","Which datasets. -a walks every dataset with a Backup flag; -t takes IDs and accepts the SQL wildcard %.", AMBERLT, "1A658F"],
     ["Action","-A Bits","What to do, as a bitmask: 1 list, 2 tar, 4 transfer, 8 check, 16 stats. Defaults to 3.", AMBER, "6E8300"],
-    ["Copies","-B | -D","Which end points. -B Backup only, -D Backup + Drdata. Default: both.", GREEN, "00797C"],
+    ["Copies","-B | -D","A filter, not an override. -B keeps single copy datasets, -D keeps two copy ones. Default: each dataset follows its own flag.", GREEN, "00797C"],
     ["Run control","-b -d -m -l -n -W -w -u","How it runs: background, PBS delay, processes, locking, dry run, worker slots.", TEAL, "1A658F"],
   ];
   const y=2.95, cw=2.94, ch=2.4, gap=0.24; let x=0.5;
@@ -979,7 +979,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
   const steps = [
     ["1", "Cron fires", "dsquasar -a -A 3 -e -b -d PBS runs on the login host, in background mode.", DEEP],
-    ["2", "Size the job", "The detail file count is turned into a cpu count, and PBS qoptions are written:\nwalltime + select=1:ncpus=N:mem=Ngb.", TEAL],
+    ["2", "Size the job", "The pending tar count is turned into a cpu count, and PBS qoptions are written:\nwalltime + select=1:ncpus=N:mem=Ngb.", TEAL],
     ["3", "dscheck record", "A record is inserted keyed on command + specialist + argv + workdir. The argv is left unchanged, so the next identical cron line is recognised as a duplicate and blocks.", GREEN],
     ["4", "Daemon submits", "dscheck picks the record up, submits to PBS, and dsquasar re-runs there \u2014 reading its process count back from the reserved ncpus.", AMBER],
     ["5", "Retry on failure", "TRYLMTS['dsquasar'] = 3: a failed run is resubmitted up to three times before the record is reported as failed.", DEEP],
@@ -1035,7 +1035,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addText("One child per 90 GB batch \u2014 few large, network-bound units.", {
     x:7.15, y:2.85, w:5.5, h:0.3, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
   code(s, 7.15, 3.2, 5.5, 0.75,
-    "MPBLIMIT = 900   tar files per process\nMPBMAX   =   4   process ceiling", 11.5);
+    "MPBLIMIT = 5000  tar files per process\nMPBMAX   =    4  process ceiling", 11.5);
   s.addText("A large divisor with a low cap: more Globus streams do not move more bytes.", {
     x:7.15, y:4.05, w:5.5, h:0.6, fontFace:SANS, fontSize:11, color:INK,
     margin:0, valign:"top" });
@@ -1049,7 +1049,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });
   s.addText([
     { text:"-m sets the count by hand.  ", options:{ bold:true, color:DEEP } },
-    { text:"Interactively it is whatever you pass (default 1). In delay mode the count travels through the reserved PBS ncpus instead of the command line, so -m on a -d run is ignored.", options:{} },
+    { text:"With no -m, a delayed run sizes itself and reads the count back from the reserved PBS ncpus. An explicit -m always wins \u2014 including -m 1 to force a single process.", options:{} },
   ], { x:0.72, y:6.0, w:11.9, h:0.6, fontFace:SANS, fontSize:11.5, color:INK,
        margin:0, valign:"middle" });
   foot(s);
@@ -1378,7 +1378,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     rectRadius:0.1, fill:{color:LIGHT}, line:{color:GREEN, width:1.5} });
   s.addText("Two independent copies", { x:7.15, y:2.42, w:5.5, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:GREEN, margin:0 });
-  s.addText("Every tar goes to both end points by default. Drdata is written first, so an interrupted run still leaves the DR copy complete.", {
+  s.addText("A dataset flagged D is written to both end points, Drdata first, so an interrupted run still leaves the DR copy complete.", {
     x:7.15, y:2.78, w:5.5, h:0.55, fontFace:SANS, fontSize:11, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   reftable(s, 7.15, 3.42, 5.5, [2.0, 3.5], [
@@ -1401,7 +1401,47 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 26 CLOSING
+// ============================================== 26 RESTORE WALKTHROUGH
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Recovery", GREEN);
+  title(s, "dsarch -RQ  \u2014  How a File Comes Back");
+  s.addText("Name the files you want back and dsarch does the rest. The outline below is enough to run a restore; the dsarch guide covers the options in full.", {
+    x:0.5, y:1.6, w:12.35, h:0.5, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+  code(s, 0.5, 2.22, 12.35, 0.62,
+    "dsarch <dsid> -RQ -WF <web files>   [-WT <types>]\n" +
+    "dsarch <dsid> -RQ -SF <saved files>  -ST <types>     # or -QF <tar> for a whole tar", 12.5);
+
+  const steps = [
+    ["1", "Name the files", "-WF for web files, -SF plus -ST for saved files. -QF names a Quasar tar directly, and pulls it down without restoring anything.", DEEP],
+    ["2", "Find the tar", "Each wfile and sfile record carries the bid of the backup it went into, so one lookup gives the tar name, its end point and its path.", TEAL],
+    ["3", "Fetch it once", "The tar is transferred from gdex-quasar into the dataset work area. A tar already sitting there is reused, so several files out of one tar cost one transfer.", GREEN],
+    ["4", "Unpack what was asked", "The member list in the bfile note locates each file inside the tar \u2014 including any later rename \u2014 and only those members are extracted.", AMBER],
+    ["5", "Put it back", "Web files return to the dataset data tree or the object store, saved files to decsdata. Files still present on GDEX are left untouched.", DEEP],
+  ];
+  let sy = 3.02;
+  steps.forEach(([num, hd, bd, col]) => {
+    s.addShape(p.ShapeType.roundRect, { x:0.5, y:sy, w:12.35, h:0.6,
+      rectRadius:0.07, fill:{color:TINT}, line:{type:"none"} });
+    circ(s, 0.68, sy+0.08, 0.44, col, num, LIGHT, 13);
+    s.addText(hd, { x:1.28, y:sy, w:2.05, h:0.6, fontFace:SANS, bold:true,
+      fontSize:12.5, color:INK, margin:0, valign:"middle" });
+    s.addText(bd, { x:3.35, y:sy, w:9.3, h:0.6, fontFace:SANS, fontSize:10.5,
+      color:MUTE, margin:0, valign:"middle", lineSpacingMultiple:0.95 });
+    sy += 0.68;
+  });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:sy+0.04, w:12.35, h:0.55,
+    rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
+  s.addText([
+    { text:"Restores are safe to repeat.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"Anything already on GDEX is skipped, and each restored file is size checked against its GDEXDB record.", options:{ color:"C3D7EE" } },
+  ], { x:0.72, y:sy+0.04, w:11.9, h:0.55, fontFace:SANS, fontSize:11.5,
+       margin:0, valign:"middle" });
+  foot(s);
+})();
+
+// ============================================== 27 CLOSING
 (() => {
   const s = p.addSlide(); boldStatement(s);
   s.addText("RECAP", { x:BOLD_X, y:1.16, w:8, h:0.35, fontFace:SANS, bold:true,
@@ -1429,7 +1469,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   });
 })();
 
-// ============================================== 27 QUESTIONS
+// ============================================== 28 QUESTIONS
 (() => {
   const s = p.addSlide(); boldStatement(s);
   // template title box: x 1.67, y 1.18, w 10.0, h 5.56, vertically centred
