@@ -1441,7 +1441,116 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 27 CLOSING
+// ============================================== 27 COLD STORAGE
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Cold storage", AMBER);
+  title(s, "Saved Files Now Go to GLADE Tape");
+  s.addText("Saved files under the decsdata area are no longer shipped to Quasar. They are handed to the GLADE HSM instead, which keeps them on the campaign file system until the batch processes migrate them onto tape.", {
+    x:0.5, y:1.58, w:12.35, h:0.5, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:2.18, w:12.35, h:0.62,
+    rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });
+  s.addText([
+    { text:"Paused, not removed.  ", options:{ bold:true, color:AMBER } },
+    { text:"Everything dsquasar does with Saved files still works \u2014 the ", options:{} },
+    { text:"sfile", options:{ fontFace:MONO, bold:true } },
+    { text:" gathering, tarring and ", options:{} },
+    { text:"-RQ", options:{ fontFace:MONO, bold:true } },
+    { text:" restore paths are untouched. Set the backup flags again and Saved files go back onto Quasar.", options:{} },
+  ], { x:0.72, y:2.18, w:11.9, h:0.62, fontFace:SANS, fontSize:11.5, color:INK,
+       margin:0, valign:"middle" });
+
+  // what decsdata_storage does, stage by stage
+  const stg = [
+    ["<decsdata>/<dsid>", "The Saved files as dsarch stores them", DEEP],
+    ["cold_storage_<date>/<dsid>", "decsdata_storage moves the dataset here", TEAL],
+    ["COLD_STORAGE/<dsid>", "glade_hsm migrate -f relocates it once more", AMBER],
+  ];
+  const cy=3.02, cw=3.8, ch=1.5, cgap=0.43;
+  let cx=0.5;
+  stg.forEach((st,i)=>{
+    s.addShape(p.ShapeType.roundRect, { x:cx, y:cy, w:cw, h:ch, rectRadius:0.1,
+      fill:{color:TINT}, line:{color:st[2], width:2} });
+    s.addText(st[0], { x:cx+0.12, y:cy+0.18, w:cw-0.24, h:0.6, align:"center",
+      fontFace:MONO, bold:true, fontSize:12.5, color:st[2], margin:0, valign:"middle" });
+    s.addText(st[1], { x:cx+0.15, y:cy+0.78, w:cw-0.3, h:0.6, align:"center",
+      fontFace:SANS, fontSize:11, color:MUTE, margin:0, valign:"top",
+      lineSpacingMultiple:1.05 });
+    if (i<2) s.addText("\u2192", { x:cx+cw+0.02, y:cy, w:cgap-0.04, h:ch,
+      align:"center", valign:"middle", fontFace:SANS, fontSize:24, bold:true,
+      color:st[2], margin:0 });
+    cx += cw+cgap;
+  });
+
+  s.addText("Run it", { x:0.5, y:4.6, w:6.05, h:0.3, fontFace:SANS, bold:true,
+    fontSize:13, color:INK, margin:0 });
+  code(s, 0.5, 4.9, 6.05, 0.78,
+    "decsdata_storage -d d612000 d627000 -x\n" +
+    "decsdata_storage -D 20250529 -w /gdex/decsdata -x", 10.5);
+  s.addText([
+    { text:"The HSM migrates every file of 100 MB or more onto tape, and everything under a ", options:{} },
+    { text:"COLD_STORAGE/", options:{ fontFace:MONO, bold:true } },
+    { text:" path is marked immutable. No ", options:{} },
+    { text:"bfile", options:{ fontFace:MONO, bold:true } },
+    { text:" records are written \u2014 cold storage is outside the dsquasar bookkeeping.", options:{} },
+  ], { x:0.5, y:5.78, w:6.05, h:1.1, fontFace:SANS, fontSize:11, color:MUTE,
+       margin:0, valign:"top", lineSpacingMultiple:1.06 });
+
+  s.addText("Options", { x:6.9, y:4.6, w:5.95, h:0.3, fontFace:SANS, bold:true,
+    fontSize:13, color:INK, margin:0 });
+  reftable(s, 6.9, 4.9, 5.95, [1.35, 4.6], [
+    ["-D <date>", "Names cold_storage_<date>; defaults to today"],
+    ["-w <dir>",  "The decsdata directory; defaults to /gdex/decsdata"],
+    ["-d | -l",   "Dataset IDs on the command line, or a list file"],
+    ["-x",        "Mandatory \u2014 without it the help is shown"],
+  ], ["Option", "decsdata_storage \u2014 part of rda-python-miscs"], AMBER, AMBER, 11);
+  foot(s);
+})();
+
+// ============================================== 28 COLD STORAGE RESTORE
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Cold storage", AMBER);
+  title(s, "decsdata_restore  \u2014  Three Steps Off Tape", 29);
+  s.addText("A recall is only a request: the HSM reads the tape later, on its own schedule. Restoring is therefore always three commands. Name a dataset, or a sub-path of one, and without -D every cold storage directory is searched, the newest first.", {
+    x:0.5, y:1.58, w:12.35, h:0.5, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+  code(s, 0.5, 2.2, 12.35, 0.85,
+    "decsdata_restore -d d612000/2020 -x      # 1. ask for it\n" +
+    "decsdata_restore -d d612000/2020 -s      # 2. wait for it\n" +
+    "decsdata_restore -d d612000/2020 -r      # 3. copy it back", 11.5);
+
+  const rst = [
+    ["-x", "Request the recall", "Submits the glade_hsm recall request. First the restore size is added up from Table sfile in RDADB and compared with the free space gladequota reports \u2014 twice the size is required, since the recalled copy and the copy made by -r both live under the decsdata quota.", DEEP],
+    ["-s", "Watch the status", "Reports how many files are still on tape, plus the log of any outstanding request. Repeat it until nothing is left offline.", TEAL],
+    ["-r", "Copy it back", "Copies the recalled data back under <decsdata>/<dsid>, or under a target directory given after -r; a restored sub-path keeps its relative position. -f copies even while files are still on tape.", AMBER],
+  ];
+  let ry = 3.22;
+  rst.forEach(([flag, hd, bd, col]) => {
+    s.addShape(p.ShapeType.roundRect, { x:0.5, y:ry, w:12.35, h:0.95,
+      rectRadius:0.08, fill:{color:TINT}, line:{type:"none"} });
+    s.addShape(p.ShapeType.roundRect, { x:0.68, y:ry+0.24, w:0.75, h:0.46,
+      rectRadius:0.06, fill:{color:col}, line:{type:"none"} });
+    s.addText(flag, { x:0.68, y:ry+0.24, w:0.75, h:0.46, align:"center",
+      valign:"middle", fontFace:MONO, bold:true, fontSize:13, color:LIGHT, margin:0 });
+    s.addText(hd, { x:1.6, y:ry, w:2.1, h:0.95, fontFace:SANS, bold:true,
+      fontSize:12.5, color:INK, margin:0, valign:"middle" });
+    s.addText(bd, { x:3.75, y:ry, w:8.9, h:0.95, fontFace:SANS, fontSize:10.5,
+      color:MUTE, margin:0, valign:"middle", lineSpacingMultiple:1.0 });
+    ry += 1.03;
+  });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:ry+0.05, w:12.35, h:0.55,
+    rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
+  s.addText([
+    { text:"Seven-day window.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"Recalled files stay readable for 7 days and are then migrated back onto tape. -r leaves the cold copy in place, so taking a dataset out of the HSM for good means moving it out of the COLD_STORAGE path.", options:{ color:"C3D7EE" } },
+  ], { x:0.72, y:ry+0.05, w:11.9, h:0.55, fontFace:SANS, fontSize:11.5,
+       margin:0, valign:"middle" });
+  foot(s);
+})();
+
+// ============================================== 29 CLOSING
 (() => {
   const s = p.addSlide(); boldStatement(s);
   s.addText("RECAP", { x:BOLD_X, y:1.16, w:8, h:0.35, fontFace:SANS, bold:true,
@@ -1469,7 +1578,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   });
 })();
 
-// ============================================== 28 QUESTIONS
+// ============================================== 30 QUESTIONS
 (() => {
   const s = p.addSlide(); boldStatement(s);
   // template title box: x 1.67, y 1.18, w 10.0, h 5.56, vertically centred
