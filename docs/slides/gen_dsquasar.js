@@ -1047,7 +1047,105 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 18 MULTIPROCESSING SIZING
+// ============================================== 18 WATCHING A RUN
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Scheduling", TEAL);
+  title(s, "Watching a Run with dscheck");
+  s.addText("-d hands the run to dscheck, so dscheck is also where it is watched \u2014 in the browser, or on the command line.", {
+    x:0.5, y:1.58, w:12.35, h:0.4, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:2.05, w:6.05, h:1.05,
+    rectRadius:0.09, fill:{color:TINT}, line:{color:LINE, width:1} });
+  s.addText([
+    { text:"In the browser\n", options:{ bold:true, color:DEEP, fontSize:13 } },
+    { text:"gdex.ucar.edu/rda_pg_config/", options:{ fontFace:MONO, bold:true,
+      color:DEEP, hyperlink:{ url:"https://gdex.ucar.edu/rda_pg_config/" } } },
+    { text:"  \u2192  DSCHECK \u2192 Check Information, then search on Command = dsquasar.", options:{} },
+  ], { x:0.72, y:2.05, w:5.6, h:1.05, fontFace:SANS, fontSize:11, color:INK,
+       margin:0, valign:"middle", lineSpacingMultiple:1.15 });
+  code(s, 6.9, 2.05, 5.95, 1.05,
+    "# the same records from the command line\n" +
+    "dscheck gc -cs -cm dsquasar\n" +
+    "dscheck gc -cs -cm dsquasar -fn all", 10.5);
+  s.addText([
+    { text:"-GC", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:" lists the check records,  ", options:{} },
+    { text:"-CS", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:" adds the live status line,  ", options:{} },
+    { text:"-CM", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:" narrows the list to one command, and  ", options:{} },
+    { text:"-FN all", options:{ fontFace:MONO, bold:true, color:DEEP } },
+    { text:" returns every field instead of the short set.", options:{} },
+  ], { x:0.5, y:3.2, w:12.35, h:0.35, fontFace:SANS, fontSize:11.5, color:INK,
+       margin:0, valign:"middle" });
+  code(s, 0.5, 3.6, 12.35, 1.05,
+    "CheckIndex<:>ArgumentVector<:>Status<:>FileCount<:>DoneCount<:>\n" +
+    "4105237<:>-a -A 3 -e -b -d PBS<:>Run 2H4M5S, 6% done PBS<5948540>/casper62<:>19195<:>1214<:>\n" +
+    "4102650<:>-a -A 3 -e -b -d PBS -w 2<:>Run 23H37M58S, 2% done PBS<5928624>/casper64<:>54290<:>1193<:>\n" +
+    "2 check records retrieved                                        # columns trimmed to fit", 9.5);
+
+  const fld = [
+    ["Status", "How long the job has been running, how far along it is, and the PBS job id with the node it landed on. A failed check carries the error message here instead.", DEEP],
+    ["FileCount / DoneCount", "The work in the record and the part of it finished, which is where the percentage comes from. Unchanged between two checks means the job is alive but not progressing.", GREEN],
+    ["ArgumentVector", "The duplicate key. The second record differs only by -w 2, the extra worker slot, which is exactly why it gets a record of its own.", AMBER],
+  ];
+  let fx = 0.5;
+  fld.forEach(([hd, bd, col]) => {
+    s.addShape(p.ShapeType.roundRect, { x:fx, y:4.78, w:3.95, h:1.42,
+      rectRadius:0.09, fill:{color:TINT}, line:{color:col, width:1.5} });
+    s.addText(hd, { x:fx+0.22, y:4.88, w:3.55, h:0.32, fontFace:MONO, bold:true,
+      fontSize:11.5, color:col, margin:0, valign:"middle" });
+    s.addText(bd, { x:fx+0.22, y:5.22, w:3.55, h:0.9, fontFace:SANS,
+      fontSize:10, color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.05 });
+    fx += 4.2;
+  });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.3, w:12.35, h:0.55,
+    rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
+  s.addText([
+    { text:"A long-running record is not by itself a problem.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"A first pass over a big archive legitimately runs for hours. The one to look at is the record whose DoneCount stops moving \u2014 it holds the duplicate key, so every later cron line blocks behind it.", options:{ color:"C3D7EE" } },
+  ], { x:0.72, y:6.3, w:11.9, h:0.55, fontFace:SANS, fontSize:11,
+       margin:0, valign:"middle" });
+  foot(s);
+})();
+
+// ============================================== 19 THE FULL CHECK RECORD
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Scheduling", TEAL);
+  title(s, "-fn all  \u2014  The Whole Check Record");
+  s.addText("The long form prints every column of the record. A few of them say more than the status line does.", {
+    x:0.5, y:1.58, w:12.35, h:0.4, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+  code(s, 0.5, 2.05, 12.35, 1.0,
+    "CheckIndex<:>Command<:>ArgumentVector<:>Dataset<:>ActionName<:>Status<:>PBSQueue<:>ParentIndex<:>DownFlags<:>\n" +
+    "FileCount<:>DoneCount<:>TryCount<:>MaxCount<:>DataSize<:>CheckDate<:>CheckTime<:>HostName<:>Specialist<:>\n" +
+    "WorkDir<:>Modules<:>Environments<:>QSubOptions<:>ArgumenteXtra<:>ERrormessage<:>", 9.5);
+  reftable(s, 0.5, 3.2, 12.35, [2.5, 4.3, 5.55], [
+    ["ActionName",  "A3",
+     "Which -A action this record is running"],
+    ["TryCount / MaxCount", "1  /  3",
+     "Submissions so far; a failed run is retried twice more"],
+    ["DataSize",    "227727328477",
+     "The bytes the run has to move"],
+    ["QSubOptions", "-l walltime=24:00:00,select=1:ncpus=12:mem=12gb",
+     "What -d reserved: the walltime and the cpu count"],
+    ["ERrormessage", "(empty)",
+     "Carries the failure text once a run gives up"],
+  ], ["Field", "Value in the sample", "What it tells you"], TEAL, DEEP, 11);
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.0, w:12.35, h:0.8,
+    rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
+  s.addText([
+    { text:"ncpus is the auto-sizing, written down.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"ncpus=12 in QSubOptions is the process count dsquasar worked out from the pending tar count on the login host, stored in the record, and read back when the batch job starts. Reading it here is the simplest way to confirm what a run was actually given.", options:{ color:"C3D7EE" } },
+  ], { x:0.72, y:6.0, w:11.9, h:0.8, fontFace:SANS, fontSize:11.5,
+       margin:0, valign:"middle", lineSpacingMultiple:1.05 });
+  foot(s);
+})();
+
+// ============================================== 20 MULTIPROCESSING SIZING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Parallelism", AMBER);
@@ -1097,7 +1195,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 19 PBS WALLTIME GUARD
+// ============================================== 21 PBS WALLTIME GUARD
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_DARK" });
   kicker(s, "Walltime Guard", AMBERLT);
@@ -1149,7 +1247,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s, true);
 })();
 
-// ============================================== 20 WORKER SLOTS
+// ============================================== 22 WORKER SLOTS
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Worker Slots", TEAL);
@@ -1199,7 +1297,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 21 LOCKING & CONCURRENCY
+// ============================================== 23 LOCKING & CONCURRENCY
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Locking", GREEN);
@@ -1239,7 +1337,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 22 EMAIL REPORTING
+// ============================================== 24 EMAIL REPORTING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reporting", TEAL);
@@ -1282,7 +1380,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 23 KEY MODE OPTIONS
+// ============================================== 25 KEY MODE OPTIONS
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reference", AMBER);
@@ -1321,7 +1419,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 24 ENVIRONMENT & FILES
+// ============================================== 26 ENVIRONMENT & FILES
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Environment", TEAL);
@@ -1360,7 +1458,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 25 TROUBLESHOOTING
+// ============================================== 27 TROUBLESHOOTING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Troubleshooting", AMBER);
@@ -1395,7 +1493,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 26 RECOVERY
+// ============================================== 28 RECOVERY
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Recovery", GREEN);
@@ -1443,7 +1541,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 27 RESTORE WALKTHROUGH
+// ============================================== 29 RESTORE WALKTHROUGH
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Recovery", GREEN);
@@ -1483,7 +1581,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 28 COLD STORAGE
+// ============================================== 30 COLD STORAGE
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Cold storage", AMBER);
@@ -1550,7 +1648,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 29 COLD STORAGE RESTORE
+// ============================================== 31 COLD STORAGE RESTORE
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Cold storage", AMBER);
@@ -1592,7 +1690,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 30 CLOSING
+// ============================================== 32 CLOSING
 (() => {
   const s = p.addSlide(); boldStatement(s);
   s.addText("RECAP", { x:BOLD_X, y:1.16, w:8, h:0.35, fontFace:SANS, bold:true,
@@ -1620,7 +1718,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   });
 })();
 
-// ============================================== 31 QUESTIONS
+// ============================================== 33 QUESTIONS
 (() => {
   const s = p.addSlide(); boldStatement(s);
   // template title box: x 1.67, y 1.18, w 10.0, h 5.56, vertically centred
