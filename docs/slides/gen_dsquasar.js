@@ -1005,7 +1005,49 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 17 MULTIPROCESSING SIZING
+// ============================================== 17 PRODUCTION CRON SCHEDULE
+(() => {
+  const s = p.addSlide({ masterName:"INTERIOR_NG" });
+  kicker(s, "Scheduling", TEAL);
+  title(s, "How Often It Runs in Production");
+  s.addText("Nobody starts a backup by hand. Four cron entries on cron.hpc.ucar.edu keep the archive current \u2014 each one an ssh into casper that leaves a dscheck record behind for PBS.", {
+    x:0.5, y:1.58, w:12.35, h:0.55, fontFace:SANS, fontSize:14.5, color:INK,
+    margin:0, valign:"top", lineSpacingMultiple:1.1 });
+  reftable(s, 0.5, 2.25, 12.35, [2.15, 3.6, 6.6], [
+    ["0 */4 * * *",  "-a -A 3 -e -b -d PBS",          "Every 4 hours, six times a day \u2014 list the files still to back up and build the tars"],
+    ["0 */4 * * *",  "-a -A 4 -e -b -d PBS",          "Every 4 hours, six times a day \u2014 ship the finished tars to Quasar"],
+    ["0 1 1 */3 *",  "-a -c 1 -A 3 -l N -e -b -d PBS","1 AM on the 1st of every third month \u2014 re-back up files that changed"],
+    ["0 3 1,15 * *", "-a -A 16 -e -b -d PBS",         "3 AM on the 1st and the 15th \u2014 dump the backup statistics"],
+  ], ["Cron time", "dsquasar arguments", "What the run does"], TEAL, DEEP, 11);
+
+  s.addText("Why running that often is safe", { x:0.5, y:4.4, w:12.35, h:0.3,
+    fontFace:SANS, bold:true, fontSize:14, color:INK, margin:0 });
+  const why = [
+    ["Duplicates block", "The cron line never changes, so dscheck recognises the argv and refuses a second submit while the first record is still pending.", DEEP],
+    ["Nothing is lost", "The 23-hour walltime guard stops a long job cleanly and leaves its 'N' and 'T' records on file; the next run simply picks them up.", GREEN],
+    ["Build and ship overlap", "-A 3 and -A 4 fire at the same minute. One tars what is ready while the other uploads what is already tarred, and the dataset lock keeps them off the same files.", AMBER],
+  ];
+  let wx = 0.5;
+  why.forEach(([hd, bd, col]) => {
+    s.addShape(p.ShapeType.roundRect, { x:wx, y:4.75, w:3.95, h:1.45,
+      rectRadius:0.09, fill:{color:TINT}, line:{color:col, width:1.5} });
+    s.addText(hd, { x:wx+0.22, y:4.88, w:3.5, h:0.35, fontFace:SANS, bold:true,
+      fontSize:13, color:col, margin:0, valign:"middle" });
+    s.addText(bd, { x:wx+0.22, y:5.25, w:3.55, h:0.85, fontFace:SANS,
+      fontSize:10.5, color:MUTE, margin:0, valign:"top", lineSpacingMultiple:1.05 });
+    wx += 4.2;
+  });
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.3, w:12.35, h:0.55,
+    rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
+  s.addText([
+    { text:"Where the schedule lives.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"crontab/cron/zji_cron.cron in the rda-cron-controls repository; every line logs to dssdb/log/cronjob.log, and -e mails the report to the specialist.", options:{ color:"C3D7EE" } },
+  ], { x:0.72, y:6.3, w:11.9, h:0.55, fontFace:SANS, fontSize:11.5,
+       margin:0, valign:"middle" });
+  foot(s);
+})();
+
+// ============================================== 18 MULTIPROCESSING SIZING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Parallelism", AMBER);
@@ -1055,7 +1097,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 18 PBS WALLTIME GUARD
+// ============================================== 19 PBS WALLTIME GUARD
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_DARK" });
   kicker(s, "Walltime Guard", AMBERLT);
@@ -1107,7 +1149,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s, true);
 })();
 
-// ============================================== 19 WORKER SLOTS
+// ============================================== 20 WORKER SLOTS
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Worker Slots", TEAL);
@@ -1157,7 +1199,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 20 LOCKING & CONCURRENCY
+// ============================================== 21 LOCKING & CONCURRENCY
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Locking", GREEN);
@@ -1197,7 +1239,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 21 EMAIL REPORTING
+// ============================================== 22 EMAIL REPORTING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reporting", TEAL);
@@ -1240,7 +1282,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 22 KEY MODE OPTIONS
+// ============================================== 23 KEY MODE OPTIONS
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Reference", AMBER);
@@ -1279,7 +1321,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 23 ENVIRONMENT & FILES
+// ============================================== 24 ENVIRONMENT & FILES
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Environment", TEAL);
@@ -1318,7 +1360,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 24 TROUBLESHOOTING
+// ============================================== 25 TROUBLESHOOTING
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Troubleshooting", AMBER);
@@ -1353,7 +1395,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 25 RECOVERY
+// ============================================== 26 RECOVERY
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Recovery", GREEN);
@@ -1401,7 +1443,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 26 RESTORE WALKTHROUGH
+// ============================================== 27 RESTORE WALKTHROUGH
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Recovery", GREEN);
@@ -1441,7 +1483,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 27 COLD STORAGE
+// ============================================== 28 COLD STORAGE
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Cold storage", AMBER);
@@ -1508,7 +1550,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 28 COLD STORAGE RESTORE
+// ============================================== 29 COLD STORAGE RESTORE
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_NG" });
   kicker(s, "Cold storage", AMBER);
@@ -1550,7 +1592,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   foot(s);
 })();
 
-// ============================================== 29 CLOSING
+// ============================================== 30 CLOSING
 (() => {
   const s = p.addSlide(); boldStatement(s);
   s.addText("RECAP", { x:BOLD_X, y:1.16, w:8, h:0.35, fontFace:SANS, bold:true,
@@ -1578,7 +1620,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   });
 })();
 
-// ============================================== 30 QUESTIONS
+// ============================================== 31 QUESTIONS
 (() => {
   const s = p.addSlide(); boldStatement(s);
   // template title box: x 1.67, y 1.18, w 10.0, h 5.56, vertically centred
