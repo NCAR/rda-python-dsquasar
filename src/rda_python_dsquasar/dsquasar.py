@@ -1041,7 +1041,7 @@ class DsQuasar(PgCMD, PgSplit):
          fname = pgrec[tname]
          fsize = pgrec['data_size']
          ftype = pgrec['type']
-         fcksm = pgrec['checksum']
+         fcksm = pgrec['checksum'] if pgrec['checksum'] else ''   # a directory, such as a zarr store, has none
          qinfo['fcnt'] += 1
          qinfo['size'] += fsize
          instr = "{}<:>{}<:>{}<:>{}<:>\n".format(fname, ftype, fsize, fcksm)
