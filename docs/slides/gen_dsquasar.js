@@ -1024,7 +1024,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     fontFace:SANS, bold:true, fontSize:14, color:INK, margin:0 });
   const why = [
     ["Duplicates block", "The cron line never changes, so dscheck recognises the argv and refuses a second submit while the first record is still pending.", DEEP],
-    ["Nothing is lost", "The 23-hour walltime guard stops a long job cleanly and leaves its 'N' and 'T' records on file; the next run simply picks them up.", GREEN],
+    ["Nothing is lost", "A job killed at the walltime leaves its 'N' and 'T' records on file and its progress report in dscheck.einfo; the next run simply picks them up.", GREEN],
     ["Build and ship overlap", "-A 3 and -A 4 fire at the same minute. One tars what is ready while the other uploads what is already tarred, and the dataset lock keeps them off the same files.", AMBER],
   ];
   let wx = 0.5;
@@ -1199,26 +1199,25 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 (() => {
   const s = p.addSlide({ masterName:"INTERIOR_DARK" });
   kicker(s, "Walltime Guard", AMBERLT);
-  s.addText("Stopping Cleanly Before PBS Kills the Job", {
+  s.addText("Making Sure the Report Outlives the Job", {
     x:0.5, y:0.72, w:10.2, h:0.7, fontFace:SERIF, fontSize:32, bold:true,
     color:LIGHT, margin:0 });
-  s.addText("The queue gives the job 24 hours. A tar file killed halfway through leaves a partial file on disk and a bfile record that claims work is in progress. So dsquasar watches the clock itself.", {
+  s.addText("The queue gives the job 24 hours, and a full pass over the archive can want more. Cutting the work short to make time for the mail wastes a whole run, so instead dsquasar parks a progress report in its dscheck record an hour before the limit, and keeps working.", {
     x:0.5, y:1.62, w:12.35, h:0.6, fontFace:SANS, fontSize:14.5, color:"C3D7EE",
     margin:0, valign:"top", lineSpacingMultiple:1.1 });
 
   // timeline
   const tx = 0.9, tw = 11.5, ty = 2.75;
   s.addShape(p.ShapeType.roundRect, { x:tx, y:ty, w:tw, h:0.42, rectRadius:0.08,
-    fill:{color:"0B2A63"}, line:{type:"none"} });
-  s.addShape(p.ShapeType.roundRect, { x:tx, y:ty, w:tw*23/24, h:0.42, rectRadius:0.08,
-    fill:{color:DEEP}, line:{type:"none"} });
-  s.addText("work accepted   \u2014   0 h to 23 h", { x:tx, y:ty, w:tw*23/24, h:0.42,
+    fill:{color:"0B2A63"}, line:{color:"2C4E7D", width:1} });
+  s.addText("work continues   \u2014   0 h to the walltime", { x:tx, y:ty, w:tw, h:0.42,
     align:"center", valign:"middle", fontFace:SANS, bold:true, fontSize:12,
     color:LIGHT, margin:0 });
-  s.addText("wind\ndown", { x:tx+tw*23/24, y:ty-0.02, w:tw/24, h:0.46, align:"center",
-    valign:"middle", fontFace:SANS, bold:true, fontSize:8, color:AMBERLT, margin:0 });
+  // amber tick where the progress report is cached; the bar runs on past it
+  s.addShape(p.ShapeType.line, { x:tx+tw*23/24, y:ty-0.12, w:0, h:0.66,
+    line:{color:AMBERLT, width:2} });
   // 23 h sits above the bar, the two ends below it, so the labels cannot collide
-  s.addText("MAXRUNTIME  23 h", { x:tx+tw*23/24-2.4, y:ty-0.36, w:2.4, h:0.3,
+  s.addText("MAXRUNTIME  23 h  \u2014  cache the report", { x:tx+tw*23/24-4.2, y:ty-0.42, w:4.2, h:0.3,
     align:"right", fontFace:MONO, fontSize:10, color:AMBERLT, margin:0 });
   s.addText("0 h", { x:tx, y:ty+0.5, w:1.8, h:0.3, align:"left",
     fontFace:MONO, fontSize:10, color:"97999B", margin:0 });
@@ -1226,10 +1225,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     fontFace:MONO, fontSize:10, color:"97999B", margin:0 });
 
   const rules = [
-    ["Before each unit", "The remaining time is compared against what the next tar file or transfer batch is expected to need."],
-    ["Past 23 hours", "No new unit is started. Children already running are waited on so nothing is truncated."],
-    ["Progress email", "The specialist is mailed what finished and what is still outstanding, so the next run is not a surprise."],
-    ["Record kept open", "Untarred bfile records stay at 'N' and untransferred ones at 'T'. The next scheduled run simply resumes."],
+    ["Ask PBS, not the clock", "qstat gives back the walltime actually granted \u2014 the daemon can cap the 24 hours asked for to the queue maximum. The cutoff is always one hour short of it."],
+    ["At the cutoff", "A progress report is written straight into dscheck.einfo, naming the elapsed time and the tar files left to build and to transfer. The run does not stop."],
+    ["If PBS kills the job", "The daemon unlocks the dead record, finds einfo filled in, mails it and clears it. An overrun is reported instead of silent."],
+    ["If the run finishes", "The full report overwrites the cached one in einfo, so exactly one mail goes out \u2014 the complete one."],
   ];
   let ry = 3.55;
   rules.forEach(([k, v]) => {
@@ -1241,7 +1240,7 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
       color:"C3D7EE", margin:0, valign:"middle", lineSpacingMultiple:1.0 });
     ry += 0.75;
   });
-  s.addText("The guard only runs inside a real batch job; a foreground run is left to the operator.", {
+  s.addText("The guard only runs inside a real batch job under dscheck with -e; a foreground run mails its report directly.", {
     x:0.9, y:ry+0.02, w:11.5, h:0.35, fontFace:SANS, italic:true, fontSize:11,
     color:"97999B", margin:0 });
   foot(s, true);
@@ -1373,8 +1372,8 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.28, w:12.35, h:0.6,
     rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });
   s.addText([
-    { text:"The walltime guard mails too.  ", options:{ bold:true, color:DEEP } },
-    { text:"A batch job that stops at 23 hours sends a progress note listing what finished and what is left, so an incomplete run is visible rather than silent.", options:{} },
+    { text:"A run that overruns still mails.  ", options:{ bold:true, color:DEEP } },
+    { text:"An hour before the PBS walltime the report so far is cached in dscheck.einfo, so even a job killed by the queue is reported rather than silent.", options:{} },
   ], { x:0.72, y:6.28, w:10.7, h:0.6, fontFace:SANS, fontSize:11.5, color:INK,
        margin:0, valign:"middle" });
   foot(s);

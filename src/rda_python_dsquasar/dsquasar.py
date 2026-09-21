@@ -94,8 +94,9 @@ class DsQuasar(PgCMD, PgSplit):
       # concurrent transfers, so extra upload processes just wait on it.
       self.MPBLIMIT = 5000        # tar file count per batch process for uploading
       self.MPBMAX = 4             # maximum number of batch processes for uploading
-      self.MAXRUNTIME = 23*3600   # 23 hours; stop before the 24-hour PBS walltime
-      self.ONEHOUR = 3600         # seconds; time headroom needed to finish before walltime
+      self.ONEHOUR = 3600         # seconds; headroom kept to report before the walltime
+      self.WALLTIME = 24*3600     # PBS walltime assumed, refreshed from PBS at start of a run
+      self.MAXRUNTIME = self.WALLTIME - self.ONEHOUR   # cutoff to cache a progress report
       # a repeat submit normally blocks as a duplicate while the batch job is running. if
       # that job is running but barely progressing, an extra worker is submitted instead
       # (see pick_worker_slot). progress is measured as the fraction of the recorded
@@ -119,7 +120,7 @@ class DsQuasar(PgCMD, PgSplit):
          'dolock' : 1,
          'doemail' : 0,
          'starttime' : 0,   # wall-clock start of the run, for the PBS walltime guard
-         'tardone' : 0,     # tar files dispatched so far, for the finish-rate estimate
+         'einfo' : 0,       # set once a progress report is cached into dscheck.einfo
          'maxworkers' : self.MAXWORKERS,   # -W, maximum concurrent workers per command
          'worker' : 1,      # -w, this run's worker slot; >1 for an added extra worker
          'cmd'  : None
@@ -195,6 +196,7 @@ class DsQuasar(PgCMD, PgSplit):
    def start_actions(self):
       self.cmdlog(self.PGBACK['cmd'])
       self.PGBACK['starttime'] = tm()
+      self.set_walltime_deadline()
       if self.sopts['u']:
          if self.sopts['a']: self.pglog("-u: Dataset IDs must be provided to Unlock datasets", self.LOGWRN)
          self.unlock_datasets()
@@ -236,9 +238,7 @@ class DsQuasar(PgCMD, PgSplit):
          if self.PGBACK['bckcnt']: title += "({})".format(self.PGBACK['bckcnt'])
          if self.PGBACK['errcnt']: title += " Error({})".format(self.PGBACK['errcnt'])
          if self.PGLOG['DSCHECK']:
-            tbl = "dscheck"
-            cnd = "cindex = {}".format(self.PGLOG['DSCHECK']['cindex'])
-            self.build_customized_email(tbl, "einfo", cnd, title, self.LOGWRN)
+            self.report_dscheck_email(title)
          else:
             self.pglog(title, self.LOGWRN|self.SNDEML)
       if self.PGBACK['pstep']: self.record_dscheck_status("D")
@@ -770,49 +770,83 @@ class DsQuasar(PgCMD, PgSplit):
          self.set_email("{}: Quit {} for {} Files of {}!".format(self.PGBACK['cmd'], amsg, bmsg, dmsg), self.EMLTOP)
          title = "dsquasar: Quit {} Error({})".format(amsg, self.PGBACK['errcnt'])
          if self.PGLOG['DSCHECK']:
-            tbl = "dscheck"
-            cnd = "cindex = {}".format(self.PGLOG['DSCHECK']['cindex'])
-            self.build_customized_email(tbl, "einfo", cnd, title, self.LOGWRN)
+            self.report_dscheck_email(title)
          else:
             self.pglog(title, self.LOGWRN|self.SNDEML)
       if self.PGBACK['pstep']: self.record_dscheck_status("F")
       self.pgexit(0)
 
-   # guard the -A 3 (Create Input&Tar, build status 'N' infiles) and -A 4 (Transfer,
-   # send status 'T' tars) PBS batch jobs against the 24-hour walltime: once past
-   # MAXRUNTIME, if the tar files still to process cannot finish within the last hour at
-   # the rate achieved so far, send a progress email and stop cleanly so the report is
-   # not lost to a PBS timeout; the remaining records are left for the next scheduled run
-   # to resume. a no-op for command-line runs, other actions, or before the cutoff.
-   def check_batch_deadline(self, qinfo):
+   # a batch run normally gets the full 24 hours asked for at submit time, but the dscheck
+   # daemon caps that to the maximum of the PBS queue it lands in - only 6 hours for the
+   # default queue - and to any planned system down. read the granted walltime back from
+   # PBS so that the run reports its progress with an hour to spare whatever the limit
+   # turns out to be, and keep the assumed 24 hours for a command-line run or when PBS
+   # cannot tell us.
+   def set_walltime_deadline(self):
+      if self.PGLOG['CURBID'] < 1: return
+      stat = self.get_pbs_info(str(self.PGLOG['CURBID']), 0, self.LOGWRN)
+      ms = re.match(r'^(\d+):(\d+)(?::(\d+))?$', stat['ReqdTime']) if stat.get('ReqdTime') else None
+      if not ms:
+         self.pglog("Cannot read the PBS walltime of Job {}; assume {}".format(
+                    self.PGLOG['CURBID'], self.seconds_to_string_time(self.WALLTIME)), self.LOGWRN)
+         return
+      wtime = 3600*int(ms.group(1)) + 60*int(ms.group(2)) + (int(ms.group(3)) if ms.group(3) else 0)
+      if wtime <= self.ONEHOUR: return   # too short to keep the reporting headroom
+      self.WALLTIME = wtime
+      self.MAXRUNTIME = wtime - self.ONEHOUR
+      self.pglog("PBS Job {} walltime {}: report progress after {}".format(
+                 self.PGLOG['CURBID'], self.seconds_to_string_time(self.WALLTIME),
+                 self.seconds_to_string_time(self.MAXRUNTIME)), self.LOGWRN)
+
+   # email a report for a run under dscheck control. the report is normally sent right
+   # away, but is cached into dscheck.einfo instead if a progress report is cached there
+   # already, so that the final report replaces it; the dscheck daemon sends and clears
+   # einfo once the check record is unlocked.
+   def report_dscheck_email(self, title, cache = 0):
+      cnd = "cindex = {}".format(self.PGLOG['DSCHECK']['cindex'])
+      if not (cache or self.PGBACK['einfo']):
+         return self.build_customized_email("dscheck", "einfo", cnd, title, self.LOGWRN)
+      msg = self.get_email()
+      if not msg: return self.FAILURE
+      sender = self.PGLOG['CURUID'] + "@ucar.edu"
+      receiver = self.PGLOG['EMLADDR'] if self.PGLOG['EMLADDR'] else sender
+      if receiver.find(sender) < 0: self.add_carbon_copy(sender, 1)
+      ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
+      if self.PGLOG['CCDADDR']: ebuf += "Cc: {}\n".format(self.PGLOG['CCDADDR'])
+      ebuf += "Subject: {}!\n\n{}\n".format(title, msg)
+      self.PGBACK['einfo'] = 1
+      return self.cache_customized_email("dscheck", "einfo", cnd, ebuf, self.LOGWRN)
+
+   # guard the long PBS batch jobs (-A 2/3/4/6) against the walltime: once past MAXRUNTIME
+   # the run keeps going, but a progress report is cached into dscheck.einfo so an email is
+   # still sent, by the dscheck daemon, if PBS kills the job at the walltime. the final
+   # report replaces it if the run does finish in time. the live email buffers are saved
+   # and put back, so the final report still carries everything logged before the cutoff.
+   # both queue depths are reported rather than the current phase's: -A 3 and -A 6 run the
+   # build and the transfer phase in one run, and -A 3 tars each input file right after
+   # creating it, so its status 'N' count stays near zero while that is the busy phase.
+   # a no-op for command-line runs, other actions, before the cutoff, or once a progress
+   # report is cached.
+   def check_batch_deadline(self):
       act = self.PGBACK['action']
-      if self.PGLOG['CURBID'] < 1 or act not in (self.CTACTS, self.BCKACT): return
+      if self.PGBACK['einfo'] or not (self.PGBACK['doemail'] and self.PGLOG['DSCHECK']): return
+      if self.PGLOG['CURBID'] < 1 or act not in (self.TARACT, self.CTACTS, self.BCKACT, self.TBACTS): return
       elapsed = tm() - self.PGBACK['starttime']
       if elapsed < self.MAXRUNTIME: return
-      status, work = ('N', 'build') if act == self.CTACTS else ('T', 'transfer')
-      remaining = self.batch_tar_count(status)
-      if remaining < 1: return
-      done = self.PGBACK['tardone']
-      need = remaining*elapsed/done if done > 0 else elapsed
-      if need <= self.ONEHOUR: return   # enough time left to finish before the walltime
-      if self.PGBACK['mproc'] > 1: self.check_child(None, 0, self.LOGWRN, 1)   # wait all children
-      if qinfo and qinfo.get('dslocks'):
-         for dsid in qinfo['dslocks']: self.lock_dataset(dsid, 0, self.LGEREX)
+      tcnt = self.batch_tar_count('N')
+      bcnt = self.batch_tar_count('T')
       etime = self.seconds_to_string_time(int(elapsed))
       amsg = self.ACTMSG[act]
-      msg = "{}: Stopped after {} with {} tar file(s) still to {} - not enough time to finish before the 24-hour PBS walltime; the next scheduled run will resume".format(amsg, etime, remaining, work)
+      bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
+      rmsg = "{} {} tar file(s) left to build and {} to transfer".format(tcnt, bmsg, bcnt)
+      msg = "{}: Still running after {} of the {} PBS walltime, with {}".format(amsg, etime, self.seconds_to_string_time(self.WALLTIME), rmsg)
       self.pglog(self.INDENT + msg, self.LOGACT)
-      if self.PGBACK['doemail']:
-         bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
-         self.set_email("{}: {} - stopped early before the PBS walltime with {} {} tar file(s) remaining!".format(self.PGBACK['cmd'], amsg, remaining, bmsg), self.EMLTOP)
-         title = "dsquasar: {} stopped early ({} remaining)".format(amsg, remaining)
-         if self.PGBACK['errcnt']: title += " Error({})".format(self.PGBACK['errcnt'])
-         if self.PGLOG['DSCHECK']:
-            self.build_customized_email("dscheck", "einfo", "cindex = {}".format(self.PGLOG['DSCHECK']['cindex']), title, self.LOGWRN)
-         else:
-            self.pglog(title, self.LOGWRN|self.SNDEML)
-      if self.PGBACK['pstep']: self.record_dscheck_status("D")
-      self.pgexit(0)
+      saved = {key : self.PGLOG[key] for key in ('EMLMSG', 'ERRMSG', 'ERRCNT', 'SUMMSG', 'PRGMSG')}
+      self.set_email("{}: {} still in progress after {}, with {}!".format(self.PGBACK['cmd'], amsg, etime, rmsg), self.EMLTOP)
+      title = "dsquasar: {} in progress ({} to build, {} to transfer)".format(amsg, tcnt, bcnt)
+      if self.PGBACK['errcnt']: title += " Error({})".format(self.PGBACK['errcnt'])
+      self.report_dscheck_email(title, 1)
+      self.PGLOG.update(saved)
 
    # recompute the confirmed backup counts from RDADB after all child processes
    # finished, so a multi-process summary reflects succeeded (not just started) work
@@ -850,7 +884,7 @@ class DsQuasar(PgCMD, PgSplit):
    def process_one_backup_file(self, qinfo, addback, keepid = False):
       ccnt = self.check_child(None, 0, self.LOGWRN, -1) if self.PGBACK['mproc'] > 1 else 0
       if self.PGSIG['QUIT']: self.quit_dsquasar(qinfo)
-      self.check_batch_deadline(qinfo)
+      self.check_batch_deadline()
       dsids = qinfo['dsids']
       dcnt = len(dsids)
       if dcnt == 0: return
@@ -908,7 +942,6 @@ class DsQuasar(PgCMD, PgSplit):
       if stat:
          # reset qinfo after quasar backup
          qinfo['qcnt'] += 1
-         self.PGBACK['tardone'] += 1   # cumulative dispatched tars for the walltime finish-rate
          qinfo['qfcnt'] += fcnt
          qinfo['qsize'] += fsize
          for dsid in dsids:
@@ -931,7 +964,7 @@ class DsQuasar(PgCMD, PgSplit):
    def transfer_quasar_tarfiles(self, qinfo):
       ccnt = self.check_child(None, 0, self.LOGWRN, -1) if self.PGBACK['mproc'] > 1 else 0
       if self.PGSIG['QUIT']: self.quit_dsquasar(qinfo)
-      self.check_batch_deadline(qinfo)
+      self.check_batch_deadline()
       # prepare for backup one tar file
       dsids = qinfo['dsids']
       bids = qinfo['bids']
@@ -985,7 +1018,6 @@ class DsQuasar(PgCMD, PgSplit):
       if dstat and bstat:
          # reset qinfo after quasar backup
          qinfo['qcnt'] += bcnt
-         self.PGBACK['tardone'] += bcnt   # cumulative transferred tars for the walltime finish-rate
          qinfo['qfcnt'] += fcnt
          qinfo['qsize'] += fsize
          for dsid in dsids:
