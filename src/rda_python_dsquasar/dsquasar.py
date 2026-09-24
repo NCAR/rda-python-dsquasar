@@ -228,6 +228,12 @@ class DsQuasar(PgCMD, PgSplit):
          if acts&self.TARACT: self.build_tarfile_action()
          if acts&self.CINACT: self.create_infile_action()
          if self.dstart and acts&self.TBACTS == self.TBACTS: self.globus_transfer_action()
+         # the queues were empty, so nothing was processed and nothing failed. no dscheck
+         # record is registered for such a run either, so drop the report rather than mail
+         # one about 0 files. a parked progress report still forces one, to clean it up
+         if not (self.PGBACK['bckcnt'] or self.PGBACK['errcnt'] or
+                 self.PGLOG['ERRCNT'] or self.PGBACK['einfo']):
+            self.PGBACK['doemail'] = 0
       if self.PGBACK['doemail']:
          amsg = self.ACTMSG[self.PGBACK['action']]
          bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
@@ -343,7 +349,7 @@ class DsQuasar(PgCMD, PgSplit):
          self.backup_dataset_infiles(dsfiles, 'D')
 
    # gather and transfer tar files to Globus Quasar Servers
-   def globus_transfer_action(self):   
+   def globus_transfer_action(self):
       dsfiles = {'B' : {}, 'D' : {}}
       fcnt = self.gather_dataset_tarfiles(dsfiles)
       if fcnt and self.dstart:
@@ -752,6 +758,11 @@ class DsQuasar(PgCMD, PgSplit):
 
    # wait all child processes finish and then quit the main program
    def quit_dsquasar(self, qinfo, msg = None):
+      # a forked child reaches here through its own errcnt, which is a copy of the parent's
+      # made at the fork. only the parent reports for the run: a child reporting would email
+      # a second report, drop the progress report parked in dscheck.einfo by the parent, and
+      # mark the shared check record failed while the parent is still working
+      if self.PGSIG['PPID'] > 1: sys.exit(1)
       if self.PGBACK['mproc'] > 1: self.check_child(None, 0, self.LOGWRN, 1)
       if qinfo:
          if 'dslocks' in qinfo and qinfo['dslocks']:
@@ -798,30 +809,43 @@ class DsQuasar(PgCMD, PgSplit):
                  self.PGLOG['CURBID'], self.seconds_to_string_time(self.WALLTIME),
                  self.seconds_to_string_time(self.MAXRUNTIME)), self.LOGWRN)
 
-   # email a report for a run under dscheck control. the report is normally sent right
-   # away, but is cached into dscheck.einfo instead if a progress report is cached there
-   # already, so that the final report replaces it; the dscheck daemon sends and clears
-   # einfo once the check record is unlocked.
+   # email a report for a run under dscheck control. the progress report is parked in
+   # dscheck.einfo and the final report is sent right away. the run holds the check lock
+   # while it works, and the dscheck daemon only mails unlocked records, so a parked
+   # report goes out exactly when the check is unlocked - right after PBS kills the job
+   # off its walltime, in the same pass that resubmits it.
+   # a record with a non-empty einfo is skipped by both the start pass and the purge pass
+   # of the daemon, so the final report must drop the parked one: left behind it would be
+   # mailed a second time as a stale progress report, and would hold the finished check
+   # back from being purged.
    def report_dscheck_email(self, title, cache = 0):
       cnd = "cindex = {}".format(self.PGLOG['DSCHECK']['cindex'])
-      if not (cache or self.PGBACK['einfo']):
-         return self.build_customized_email("dscheck", "einfo", cnd, title, self.LOGWRN)
-      msg = self.get_email()
-      if not msg: return self.FAILURE
-      sender = self.PGLOG['CURUID'] + "@ucar.edu"
-      receiver = self.PGLOG['EMLADDR'] if self.PGLOG['EMLADDR'] else sender
-      if receiver.find(sender) < 0: self.add_carbon_copy(sender, 1)
-      ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
-      if self.PGLOG['CCDADDR']: ebuf += "Cc: {}\n".format(self.PGLOG['CCDADDR'])
-      ebuf += "Subject: {}!\n\n{}\n".format(title, msg)
-      self.PGBACK['einfo'] = 1
-      return self.cache_customized_email("dscheck", "einfo", cnd, ebuf, self.LOGWRN)
+      if cache:
+         msg = self.get_email()
+         if not msg: return self.FAILURE
+         sender = self.PGLOG['CURUID'] + "@ucar.edu"
+         receiver = self.PGLOG['EMLADDR'] if self.PGLOG['EMLADDR'] else sender
+         if receiver.find(sender) < 0: self.add_carbon_copy(sender, 1)
+         ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
+         if self.PGLOG['CCDADDR']: ebuf += "Cc: {}\n".format(self.PGLOG['CCDADDR'])
+         ebuf += "Subject: {}!\n\n{}\n".format(title, msg)
+         self.PGBACK['einfo'] = 1   # report the progress only once per run
+         return self.cache_customized_email("dscheck", "einfo", cnd, ebuf, self.LOGWRN)
+      estat = self.build_customized_email("dscheck", "einfo", cnd, title, self.LOGWRN)
+      # a failed send has already replaced the parked report via cache_customized_email()
+      if estat == self.SUCCESS and self.PGBACK['einfo']:
+         if self.pgexec("UPDATE dscheck set einfo = NULL WHERE " + cnd, self.LOGWRN):
+            self.PGBACK['einfo'] = 0
+         else:
+            self.pglog("Cannot clean the progress report of {}; it is emailed again".format(cnd), self.LOGWRN)
+      return estat
 
    # guard the long PBS batch jobs (-A 2/3/4/6) against the walltime: once past MAXRUNTIME
-   # the run keeps going, but a progress report is cached into dscheck.einfo so an email is
-   # still sent, by the dscheck daemon, if PBS kills the job at the walltime. the final
-   # report replaces it if the run does finish in time. the live email buffers are saved
-   # and put back, so the final report still carries everything logged before the cutoff.
+   # the run keeps going, but a progress report is parked in dscheck.einfo so that
+   # something is reported even if PBS kills the job at the walltime. the final report
+   # follows and drops the parked one if the run does finish in time. the live email
+   # buffers are saved and put back, so the final report still carries everything logged
+   # before the cutoff.
    # both queue depths are reported rather than the current phase's: -A 3 and -A 6 run the
    # build and the transfer phase in one run, and -A 3 tars each input file right after
    # creating it, so its status 'N' count stays near zero while that is the busy phase.
