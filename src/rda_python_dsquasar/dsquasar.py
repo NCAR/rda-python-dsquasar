@@ -867,15 +867,17 @@ class DsQuasar(PgCMD, PgSplit):
             self.pglog("Cannot clean the progress report of {}; it is emailed again".format(cnd), self.LOGWRN)
       return estat
 
-   # guard the long PBS batch jobs (-A 2/3/4/6) against the walltime: once past MAXRUNTIME
+   # guard the long PBS batch jobs (-A 2/3/4/6/7) against the walltime: once past MAXRUNTIME
    # the run keeps going, but a progress report is parked in dscheck.einfo so that
    # something is reported even if PBS kills the job at the walltime. the final report
    # follows and drops the parked one if the run does finish in time. the live email
    # buffers are saved and put back, so the final report still carries everything logged
    # before the cutoff.
-   # both queue depths are reported rather than the current phase's: -A 3 and -A 6 run the
-   # build and the transfer phase in one run, and -A 3 tars each input file right after
-   # creating it, so its status 'N' count stays near zero while that is the busy phase.
+   # both queue depths are reported rather than the current phase's, because -A 3 tars each
+   # input file right after creating it, so its status 'N' count stays near zero while that
+   # is the busy phase. they are worded as STATES ('left to build', 'tarred') and not as
+   # work this run will do: only -A 4 and -A 6 transfer, so calling the status 'T' count
+   # 'to transfer' in an -A 2 or -A 3 report claims work that run never performs.
    # a no-op for command-line runs, other actions, before the cutoff, or once a progress
    # report is cached.
    # called from the top of every per-item loop, not only where a tar is dispatched: a long
@@ -885,7 +887,7 @@ class DsQuasar(PgCMD, PgSplit):
    def check_batch_deadline(self):
       act = self.PGBACK['action']
       if self.PGBACK['einfo'] or not (self.PGBACK['doemail'] and self.PGLOG['DSCHECK']): return
-      if self.PGLOG['CURBID'] < 1 or act not in (self.TARACT, self.CTACTS, self.BCKACT, self.TBACTS): return
+      if self.PGLOG['CURBID'] < 1 or act not in (self.TARACT, self.CTACTS, self.BCKACT, self.TBACTS, self.CBACTS): return
       elapsed = tm() - self.PGBACK['starttime']
       if elapsed < self.MAXRUNTIME: return
       tcnt = self.batch_tar_count('N')
@@ -894,7 +896,7 @@ class DsQuasar(PgCMD, PgSplit):
       amsg = self.ACTMSG[act]
       bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
       dmsg = self.batch_done_count()
-      rmsg = "{} {} tar file(s) left to build and {} to transfer".format(tcnt, bmsg, bcnt)
+      rmsg = "{} {} tar file(s) left to build and {} tarred".format(tcnt, bmsg, bcnt)
       msg = "{}: Still running after {} of the {} PBS walltime, {}, with {}".format(amsg, etime, self.seconds_to_string_time(self.WALLTIME), dmsg, rmsg)
       self.pglog(self.INDENT + msg, self.LOGACT)
       saved = {key : self.PGLOG[key] for key in ('EMLMSG', 'ERRMSG', 'ERRCNT', 'SUMMSG', 'PRGMSG')}
