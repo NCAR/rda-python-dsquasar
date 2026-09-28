@@ -104,7 +104,7 @@ class DsQuasar(PgCMD, PgSplit):
       # for -A 3 but tar files for -A 2/-A 4.
       self.MAXWORKERS = 2         # default maximum concurrent workers per command (-W)
       self.WORKGRACE = 6*3600     # 6 hours before a running job is judged on progress
-      self.MINWDONE = 0.01        # done fraction after WORKGRACE that counts as progressing
+      self.MINWPROJ = 0.9         # projected done fraction at the walltime that counts as finishing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -114,6 +114,8 @@ class DsQuasar(PgCMD, PgSplit):
          'backflag' : None,
          'actmsg' : None,
          'pstep' : 0,       # record progress step for under dscheck control
+         'dcnt' : 0,        # files done so far, recorded as dscheck.dcount every pstep
+         'dsize' : 0,
          'errcnt' : 0,
          'bckcnt' : 0,
          'maxcnt' : 10,
@@ -399,6 +401,17 @@ class DsQuasar(PgCMD, PgSplit):
          return tcnt
       return self.pgget('bfile', '', bcnd, self.LGWNEX)
 
+   # describe how much of the registered work this run has finished. the tar counts alone
+   # do not show it: -A 3 tars each input file right after creating it, so the 'N' count
+   # stays near zero exactly while building is the busy phase, which reads as almost done
+   # when the run is barely started. dcount/fcount is the honest measure. the live dcnt is
+   # used rather than the recorded dcount, which is only flushed to RDADB every pstep files
+   def batch_done_count(self):
+      fcnt = self.DSCHK['fcount'] if 'fcount' in self.DSCHK else 0
+      dcnt = self.PGBACK['dcnt']
+      if not fcnt: return "{} file(s) done".format(dcnt)
+      return "{} of {} file(s) done({}%)".format(dcnt, fcnt, int(100*dcnt/fcnt))
+
    # look up the dscheck record registered for a worker's argv, using the same lookup key
    # init_dscheck builds
    def lookup_worker_dscheck(self, argv):
@@ -409,18 +422,29 @@ class DsQuasar(PgCMD, PgSplit):
          dargv = dargv[0:100]
       return self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN)
 
-   # a running batch job counts as stalled once it has run longer than WORKGRACE and has
-   # still completed no more than MINWDONE of its recorded work; anything further along
-   # than that is progressing and is left alone. the done fraction dcount/fcount is used
-   # instead of a raw count because dcount counts GDEX files for -A 3 but tar files for
-   # -A 2/-A 4. a job that is not locked, not started yet, or whose process is gone is not
-   # stalled: init_dscheck already restarts a dead one.
+   # a running batch job counts as stalled once it has run longer than WORKGRACE and its
+   # progress so far projects to less than MINWPROJ of its recorded work by the walltime:
+   # such a job cannot finish this attempt however long it is left alone, so an extra
+   # worker is what helps it, not more retries.
+   # the test is on the RATE, not on an absolute done fraction as it first was. a fixed
+   # 1% threshold only catches a job that is nearly frozen, and reads a job that needs
+   # weeks as progressing: the real case was 2% done after 13H35M of a 24 hour walltime,
+   # which is above 1% yet projects to 3.5% by the walltime and ~28 days to finish, and so
+   # never got a second worker.
+   # the done fraction dcount/fcount is used instead of a raw count because dcount counts
+   # GDEX files for -A 3 but tar files for -A 2/-A 4. a job that is not locked, not started
+   # yet, or whose process is gone is not stalled: init_dscheck already restarts a dead one.
+   # WALLTIME is the 24 hours asked for at submit time, since only the submitting process
+   # runs this and set_walltime_deadline reads the granted walltime back in the batch job.
+   # when the daemon caps it to a shorter queue limit the projection is optimistic, which
+   # errs towards leaving the job alone.
    def worker_progress_stalled(self, pgrec):
       if not (pgrec['pid'] and pgrec['stttime']): return False
       if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
-      if (tm() - pgrec['stttime']) < self.WORKGRACE: return False
+      elapsed = tm() - pgrec['stttime']
+      if elapsed < self.WORKGRACE: return False
       done = pgrec['dcount']/pgrec['fcount'] if pgrec['fcount'] else 0
-      return done <= self.MINWDONE
+      return (done*self.WALLTIME/elapsed) < self.MINWPROJ
 
    # whether more than one worker may run the current action. two workers stay off each
    # other's files only through dataset locking, so the action must lock what it works on:
@@ -566,6 +590,7 @@ class DsQuasar(PgCMD, PgSplit):
                'size' : 0, 'infiles' : [], 'instr' : '', 'qdsids' : [], 'abids' : [],
                'dslocks' : [], 'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
+         self.check_batch_deadline()
          if len(qinfo['dsids']) == self.DSCNT: self.process_one_backup_file(qinfo, True, False)
          if self.PGBACK['dolock'] and dsid not in qinfo['dslocks']:
             if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
@@ -682,6 +707,7 @@ class DsQuasar(PgCMD, PgSplit):
             if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
             qinfo['dslocks'].append(dsid)
          for bid in bfiles[dsid]:
+            self.check_batch_deadline()
             # the status 'N' records were gathered before this dataset was locked, so they
             # can be hours old; confirm each one is still untarred before spending a tar on
             # it. holding the dataset lock makes this check race free against a second
@@ -729,6 +755,7 @@ class DsQuasar(PgCMD, PgSplit):
                'size' : 0, 'fromfiles' : [], 'tofiles' : [], 'qdsids' : [],
                'qfcnt' : 0, 'qsize' : 0, 'qcnt' : 0}
       for bid in bfiles:
+         self.check_batch_deadline()
          binfo = bfiles[bid]
          for dsid in binfo['dsids']:
             if dsid not in qinfo['dsids']: qinfo['dsids'].append(dsid)
@@ -851,6 +878,10 @@ class DsQuasar(PgCMD, PgSplit):
    # creating it, so its status 'N' count stays near zero while that is the busy phase.
    # a no-op for command-line runs, other actions, before the cutoff, or once a progress
    # report is cached.
+   # called from the top of every per-item loop, not only where a tar is dispatched: a long
+   # stretch of files that are skipped (already backed up, or not enough accumulated size to
+   # tar yet) would otherwise walk past the cutoff without ever reaching the check, which is
+   # how a 23h run reported nothing.
    def check_batch_deadline(self):
       act = self.PGBACK['action']
       if self.PGBACK['einfo'] or not (self.PGBACK['doemail'] and self.PGLOG['DSCHECK']): return
@@ -862,12 +893,13 @@ class DsQuasar(PgCMD, PgSplit):
       etime = self.seconds_to_string_time(int(elapsed))
       amsg = self.ACTMSG[act]
       bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup'
+      dmsg = self.batch_done_count()
       rmsg = "{} {} tar file(s) left to build and {} to transfer".format(tcnt, bmsg, bcnt)
-      msg = "{}: Still running after {} of the {} PBS walltime, with {}".format(amsg, etime, self.seconds_to_string_time(self.WALLTIME), rmsg)
+      msg = "{}: Still running after {} of the {} PBS walltime, {}, with {}".format(amsg, etime, self.seconds_to_string_time(self.WALLTIME), dmsg, rmsg)
       self.pglog(self.INDENT + msg, self.LOGACT)
       saved = {key : self.PGLOG[key] for key in ('EMLMSG', 'ERRMSG', 'ERRCNT', 'SUMMSG', 'PRGMSG')}
-      self.set_email("{}: {} still in progress after {}, with {}!".format(self.PGBACK['cmd'], amsg, etime, rmsg), self.EMLTOP)
-      title = "dsquasar: {} in progress ({} to build, {} to transfer)".format(amsg, tcnt, bcnt)
+      self.set_email("{}: {} still in progress after {}, {}, with {}!".format(self.PGBACK['cmd'], amsg, etime, dmsg, rmsg), self.EMLTOP)
+      title = "dsquasar: {} in progress ({})".format(amsg, dmsg)
       if self.PGBACK['errcnt']: title += " Error({})".format(self.PGBACK['errcnt'])
       self.report_dscheck_email(title, 1)
       self.PGLOG.update(saved)
@@ -1092,6 +1124,7 @@ class DsQuasar(PgCMD, PgSplit):
       fcate = filetype.lower()
       tname = fcate + 'file'
       for i in range(fcnt):
+         self.check_batch_deadline()
          pgrec = recs[i]
          if not self.evaluate_file_stat(dsid, fcate, pgrec): continue
          fname = pgrec[tname]
