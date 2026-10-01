@@ -1408,7 +1408,11 @@ class DsQuasar(PgCMD, PgSplit):
          # them before any work, and -A 3 does a third one before tarring
          self.check_batch_deadline()
          dsid = pgrec['dsid']
-         if unlock and pgrec['pid'] and self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
+         # a changed-file run takes records that are already backed up (bid > 0) while the
+         # main runs take new files (bid = 0), so it shares no record with the worker holding
+         # the lock and must not skip the dataset for it
+         if unlock and pgrec['pid'] and not self.PGBACK['chgdays']:
+            if self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
          fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact, sizes)
       if dsfiles:
          s = 's' if fcnt > 1 else ''
