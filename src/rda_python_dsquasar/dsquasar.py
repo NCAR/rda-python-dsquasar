@@ -1071,8 +1071,9 @@ class DsQuasar(PgCMD, PgSplit):
             if not dstat: self.pglog("Error Quaser Drdata for " + fmsg, self.ERRACT|self.LOGERR)
          bstat = self.quasar_multiple_transfer(tofiles, fromfiles, 'gdex-quasar', 'gdex-glade', self.ERRACT)
          if not bstat: self.pglog("Error Quaser Backup for " + fmsg, self.ERRACT|self.LOGERR)
-         if dstat == self.FINISH: dstat = self.check_globus_finished(tofiles[0], 'gdex-quasar-drdata', self.ERRACT|self.NOWAIT)
-         if bstat == self.FINISH: bstat = self.check_globus_finished(tofiles[0], 'gdex-quasar', self.ERRACT|self.NOWAIT)
+         tcnt = len(tofiles)
+         if dstat == self.FINISH: dstat = self.check_globus_finished(tofiles[0], 'gdex-quasar-drdata', self.ERRACT|self.NOWAIT, tcnt)
+         if bstat == self.FINISH: bstat = self.check_globus_finished(tofiles[0], 'gdex-quasar', self.ERRACT|self.NOWAIT, tcnt)
          if dstat and bstat:
             for fromfile in fromfiles:
                tarfile = self.PGLOG['DSSDATA'] + fromfile
