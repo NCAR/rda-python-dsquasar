@@ -918,9 +918,10 @@ class DsQuasar(PgCMD, PgSplit):
    # even if PBS kills the job at the walltime. the final report follows and drops the
    # parked one if the run does finish in time. the live email buffers are saved and put
    # back, so the final report still carries everything logged before the cutoff.
-   # PBS sends no catchable warning before the kill - SIGTERM is not trapped and SIGKILL
-   # cannot be - so this parked report is the only thing standing between a killed job and
-   # a run that is never heard from. every action submitted to PBS is guarded, not just the
+   # batch_term_report covers the kill itself, but only the seconds of it: SIGKILL cannot be
+   # caught, and a process stuck in uninterruptible I/O may never run the handler. this parked
+   # report is what stands between a killed job and a run that is never heard from, so it is
+   # kept as the first line of defence. every action submitted to PBS is guarded, not just the
    # tar and transfer ones: -A 16 and the hidden -A 128 are submitted with the same 24 hour
    # walltime and used to be excluded, so they died silently.
    # the tar queue depths are only reported for the actions they describe. both depths are
