@@ -44,6 +44,7 @@ class DsQuasar(PgCMD, PgSplit):
    MCSACT = 128  # hidden action to add MD5 checksum string to note fields of bfile records 
    DSCNT = 65
    DSTEP = 1000
+   DSLIST = 40   # name the datasets in a report line while the list is still readable
 
    def __init__(self):
       super().__init__()  # initialize parent class
@@ -2172,45 +2173,47 @@ class DsQuasar(PgCMD, PgSplit):
                self.set_dsquasar_progress(cnt, size)
                cnt = size = 0
       if cnt: self.set_dsquasar_progress(cnt, size)
-      dscnt = len(qinfo['dsids'])
       ssize = self.format_float_value(qinfo['size'])
       bmsg = self.BACKMSG[backflag]
-      dmsg = qinfo['dsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+      dmsg = self.dataset_message(qinfo['dsids'])
       msg = "{} ({}) {} files for {} GDEX files of {}".format(bcnt, ssize, bmsg, qinfo['fcnt'], dmsg)
       self.pglog(self.INDENT + msg, self.LOGACT)
       indent = self.INDENT + self.INDENT
       if qinfo['ncnt'] > 0:
-         dscnt = len(qinfo['ndsids'])
-         dmsg = qinfo['ndsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+         dmsg = self.dataset_message(qinfo['ndsids'])
          msg = "{} {} files Missing Note fields of {}".format(bcnt, bmsg, dmsg)
          self.pglog(indent + msg, self.LOGACT)
       msg = "{} GDEX files Changed after {}".format(pcnt, bmsg)
       self.pglog(indent + msg, self.LOGACT)
       if pcnt == 0: return
       if qinfo['ccnt'] > 0:
-         dscnt = len(qinfo['cdsids'])
-         dmsg = qinfo['cdsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+         dmsg = self.dataset_message(qinfo['cdsids'])
          ssize = self.format_float_value(qinfo['csize'])
          msg = "{} ({}) GDEX file sizes Changed for {}".format(qinfo['ccnt'], ssize, dmsg)
          self.pglog(indent + msg, self.LOGACT)
       if qinfo['ucnt'] > 0:
-         dscnt = len(qinfo['udsids'])
-         dmsg = qinfo['udsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+         dmsg = self.dataset_message(qinfo['udsids'])
          ssize = self.format_float_value(qinfo['usize'])
          msg = "{} ({}) GDEX files Updated & Re-done {} for {}".format(qinfo['ucnt'], ssize, bmsg, dmsg)
          self.pglog(indent + msg, self.LOGACT)
       if qinfo['dcnt'] > 0:
-         dscnt = len(qinfo['ddsids'])
-         dmsg = qinfo['ddsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+         dmsg = self.dataset_message(qinfo['ddsids'])
          ssize = self.format_float_value(qinfo['dsize'])
          msg = "{} ({}) GDEX files Got Deleted for {}".format(qinfo['dcnt'], ssize, dmsg)
          self.pglog(indent + msg, self.LOGACT)
       if qinfo['mcnt'] > 0:
-         dscnt = len(qinfo['mdsids'])
-         dmsg = qinfo['mdsids'][0] if dscnt == 1 else "{} datasets".format(dscnt)
+         dmsg = self.dataset_message(qinfo['mdsids'])
          ssize = self.format_float_value(qinfo['msize'])
          msg = "{} ({}) GDEX files Moved for {}".format(qinfo['mcnt'], ssize, dmsg)
          self.pglog(indent + msg, self.LOGACT)
+
+   # name the datasets a report line refers to, so that a short list can be acted on
+   # instead of only counted; fall back to the count alone once the list gets long
+   def dataset_message(self, dsids):
+      dscnt = len(dsids)
+      if dscnt == 1: return dsids[0]
+      if dscnt > self.DSLIST: return "{} datasets".format(dscnt)
+      return "{} datasets ({})".format(dscnt, ', '.join(sorted(dsids)))
 
    # count cache the Web/Saved files in type A bfiles (archived) already
    def count_changed_files(self, bid, binfo, qinfo):
