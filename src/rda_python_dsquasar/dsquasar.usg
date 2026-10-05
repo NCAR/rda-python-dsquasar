@@ -8,8 +8,8 @@
  file tarring and transferring is performed through the utility program dsarch.
 
  Usage: dsquasar [-b] [(-a | -t DatasetIDs)] [-c ChangeDays] [-(e|E)]     \
-                 [-(B|D)] [-A ActionBits] [-l (Y|N)] [-m ProcessCount]    \
-                 [-n] [-u] [-d [HostName] [TryCount]] [-h]
+                 [-(B|D)] [-L (G|O)] [-A ActionBits] [-l (Y|N)]           \
+                 [-m ProcessCount] [-n] [-u] [-d [HostName] [TryCount]] [-h]
 
    Either -a or -t must be given (usage is displayed otherwise).  dsquasar runs
    from the Quasar backup work directory; it changes there automatically.
@@ -23,6 +23,21 @@
           One or more dataset IDs whose files are backed up.  The SQL wildcard
           '%' is allowed and is expanded against the dataset table.  Ignored,
           with a warning, when -a is also given.
+
+   -L  (G|O)
+          Limit the run by dataset.locflag: O takes the datasets on the object
+          store, G takes everything else.  Applies to -a and to -t alike.  The
+          two classes back up at very different rates: an O dataset has every
+          file staged down from the object store and checksummed before it can
+          be tarred, while a G dataset is only stat'ed.  Running them in one job
+          lets the slow class eat the whole walltime, so give them separate
+          runs, e.g. one submit with -L G and another with -L O.  Defaults to
+          all datasets.
+
+          -L G and -L O together always cover every dataset, so a pair of runs
+          loses nothing.  The split is by dataset, though, and dataset.locflag
+          is only a summary of the per-file flags, so a dataset holding files of
+          both kinds is backed up entirely by whichever run claims it.
 
 
  BACKUP SCOPE

@@ -123,6 +123,7 @@ class DsQuasar(PgCMD, PgSplit):
          'maxcnt' : 10,
          'dolock' : 1,
          'doemail' : 0,
+         'locflag' : None,  # -L, limit the datasets gathered to one dataset.locflag
          'starttime' : 0,   # wall-clock start of the run, for the PBS walltime guard
          'einfo' : 0,       # set once a progress report is cached into dscheck.einfo
          'eretry' : 0,      # earliest retry time after a progress report failed to cache
@@ -144,7 +145,7 @@ class DsQuasar(PgCMD, PgSplit):
       argv = sys.argv[1:]
       for arg in argv:
          if re.match(r'^-(h|-help)$', arg, re.I): self.show_usage('dsquasar')
-         ms = re.match(r'^-(a|b|c|d|e|E|l|m|n|t|u|w|A|B|D|W)$', arg)
+         ms = re.match(r'^-(a|b|c|d|e|E|l|m|n|t|u|w|A|B|D|L|W)$', arg)
          if ms:
             arg = ms.group(1)
             if  arg == 'b':
@@ -152,7 +153,7 @@ class DsQuasar(PgCMD, PgSplit):
             elif arg in self.sopts:
                self.sopts[arg] = 1
                option = None
-            elif 'AcdlmtwW'.find(arg) > -1:
+            elif 'AcdLlmtwW'.find(arg) > -1:
                option = arg
                if arg == 'd': self.bopts = []
             elif 'BD'.find(arg) > -1:
@@ -178,6 +179,10 @@ class DsQuasar(PgCMD, PgSplit):
             elif option == 'l':
                if not (arg == 'Y' or arg == 'N'): self.pglog(arg +": Lock Flag(-l) must be Y or N", self.LGWNEX)
                self.PGBACK['dolock'] = 1 if arg == 'Y' else 0
+               option = None
+            elif option == 'L':
+               if not (arg == 'G' or arg == 'O'): self.pglog(arg +": Location Flag(-L) must be G or O", self.LGWNEX)
+               self.PGBACK['locflag'] = arg
                option = None
             elif option == 'W':
                self.PGBACK['maxworkers'] = int(arg)
@@ -1469,13 +1474,29 @@ class DsQuasar(PgCMD, PgSplit):
       fcnt = 0
       # warn per named dataset with no files; stay silent when scanning all datasets
       logact = self.LOGWRN if self.dsids else 0
+      flds = "dsid, backflag, pid, lockhost"
+      # -L splits the work by where the data sits: an Object(O) dataset has to be staged
+      # down from the object store and checksummed before it can be tarred, while a Glade(G)
+      # one is only stat'ed, so the two classes run at wildly different rates and are better
+      # off in separate runs than sharing one walltime.
+      # G is matched as "not O" rather than "= G" on purpose: dataset.locflag is only a
+      # summary of the per-file flags (set_dataset_locflag writes it only when every public
+      # web file agrees, and leaves the old value otherwise), so it can hold a stale value.
+      # as "not O" the two halves stay exhaustive and no dataset falls through both runs
+      lcnd = ''
+      if self.PGBACK['locflag'] == 'O':
+         lcnd = "locflag = 'O'"
+      elif self.PGBACK['locflag']:
+         lcnd = "locflag <> 'O'"
       if self.dsids:
          pgrecs = []
          for dsid in self.dsids:
-            pgrec = self.pgget("dataset", "dsid, backflag, pid", "dsid = '{}'".format(dsid), self.LGWNEX)
+            dcnd = "dsid = '{}'".format(dsid)
+            if lcnd: dcnd += " AND " + lcnd
+            pgrec = self.pgget("dataset", flds, dcnd, self.LGWNEX)
             if pgrec: pgrecs.append(pgrec)
       else:
-         mrecs = self.pgmget("dataset", "dsid, backflag, pid", self.dsid_order().strip(), self.LGWNEX)
+         mrecs = self.pgmget("dataset", flds, (lcnd + self.dsid_order()).strip(), self.LGWNEX)
          dcnt = len(mrecs['dsid']) if mrecs else 0
          pgrecs = [self.onerecord(mrecs, i) for i in range(dcnt)]
       for pgrec in pgrecs:
@@ -1488,7 +1509,16 @@ class DsQuasar(PgCMD, PgSplit):
          # main runs take new files (bid = 0), so it shares no record with the worker holding
          # the lock and must not skip the dataset for it
          if unlock and pgrec['pid'] and not self.PGBACK['chgdays']:
-            if self.lock_dataset(dsid, 0, self.LOGACT) < 1: continue
+            # quiet unlock: a live holder is the normal case for a second worker, and the
+            # library wording for it ("Cannot Unlock") reads like a failure. report the skip
+            # here instead, in terms of the worker that is still on the dataset
+            lstat = self.lock_dataset(dsid, 0, 0)
+            if lstat < 1:
+               # -1 is the live holder; 0 means the record went away or the db errored,
+               # which lock_dataset has already logged as an error
+               if lstat < 0:
+                  self.pglog("{}: skipped, still in use by {}/{}".format(dsid, pgrec['pid'], pgrec['lockhost']), self.LOGACT)
+               continue
          fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact, sizes)
       if dsfiles:
          s = 's' if fcnt > 1 else ''
