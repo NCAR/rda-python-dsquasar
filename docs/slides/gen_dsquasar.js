@@ -1251,26 +1251,26 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
   const s = p.addSlide({ masterName:"INTERIOR" });
   kicker(s, "Worker Slots", TEAL);
   title(s, "-W / -w  \u2014  When One Batch Job Hangs");
-  s.addText("The -A 3 gather runs from cron several times a day, so a crashed job restarts quickly \u2014 dead locks are taken over and dscheck retries. The gap was a job that is alive but making no progress: it holds the duplicate key and every later cron line simply blocks.", {
+  s.addText("The -A 3 gather runs from cron several times a day, so a crashed job restarts quickly \u2014 dead locks are taken over and dscheck retries. The gap was a job that is alive but too slow to finish: it holds the duplicate key and every later cron line simply blocks.", {
     x:0.5, y:1.58, w:12.35, h:0.62, fontFace:SANS, fontSize:14, color:INK,
     margin:0, valign:"top", lineSpacingMultiple:1.1 });
 
   s.addText("Stall test", { x:0.5, y:2.35, w:6.05, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
-  s.addText("A repeat submit inspects the running job. Both conditions must hold:", {
+  s.addText("A repeat submit inspects the running job. All three must hold:", {
     x:0.5, y:2.7, w:6.05, h:0.32, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
-  code(s, 0.5, 3.05, 6.05, 0.8,
-    "runtime  >  WORKGRACE  (6 hours)\ndcount / fcount  <=  MINWDONE  (1 %)", 12);
-  s.addText("Six hours in with under one percent of its recorded work done, the job is treated as stalled and an extra worker is submitted alongside it \u2014 up to -W MaxWorkers, default 2.", {
-    x:0.5, y:4.0, w:6.05, h:0.65, fontFace:SANS, fontSize:11.5, color:INK,
+  code(s, 0.5, 3.05, 6.05, 1.05,
+    "runtime  >  WORKGRACE  (2 hours)\ndcount   >  0  (gather finished)\ndone rate x walltime  <  MINWPROJ  (90 %)", 12);
+  s.addText("A job that cannot finish its recorded work this attempt is treated as stalled, and the next cron submit adds an extra worker alongside it \u2014 up to -W MaxWorkers, default 2.", {
+    x:0.5, y:4.2, w:6.05, h:0.62, fontFace:SANS, fontSize:11.5, color:INK,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
-  code(s, 0.5, 4.75, 6.05, 0.5, "dsquasar -a -A 3 -b -d PBS -W 2", 12.5);
-  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.42, w:6.05, h:1.15,
+  code(s, 0.5, 4.9, 6.05, 0.45, "dsquasar -a -A 3 -b -d PBS -W 2", 12.5);
+  s.addShape(p.ShapeType.roundRect, { x:0.5, y:5.5, w:6.05, h:1.07,
     rectRadius:0.08, fill:{color:TINT2}, line:{color:LINE, width:1} });
   s.addText([
     { text:"Pinned to a single worker when locking is off.  ", options:{ bold:true, color:DEEP } },
     { text:"Extra workers rely on dataset locks to stay off each other's files, so -l N and the transfer actions (-A 4, 6, 7) always run one worker.", options:{} },
-  ], { x:0.7, y:5.42, w:5.65, h:1.15, fontFace:SANS, fontSize:11, color:INK,
+  ], { x:0.7, y:5.5, w:5.65, h:1.07, fontFace:SANS, fontSize:11, color:INK,
        margin:0, valign:"middle", lineSpacingMultiple:1.05 });
 
   s.addText("Slot numbering and direction", { x:6.9, y:2.35, w:5.95, h:0.35,
