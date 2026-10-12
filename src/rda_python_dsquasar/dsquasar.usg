@@ -108,8 +108,9 @@
    -W  MaxWorkers
           Maximum number of concurrent batch workers for the same command.
           Defaults to 2.  A repeat delayed submit normally blocks while the
-          batch job is running; if that job has run for more than 6 hours and
-          has still completed no more than 1% of its recorded work, it is
+          batch job is running; if that job has run for more than 2 hours,
+          has recorded some work done, and at its rate so far would finish
+          less than 90% of its recorded work within the walltime, it is
           treated as stalled and an extra worker is submitted instead, up to
           this limit.  Extra workers rely on dataset locking to stay off each
           other's files, so this is pinned to 1 with -l N, and also for the

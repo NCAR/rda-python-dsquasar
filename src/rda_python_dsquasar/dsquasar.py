@@ -105,7 +105,7 @@ class DsQuasar(PgCMD, PgSplit):
       # dscheck work done, which is action independent because dcount counts GDEX files
       # for -A 3 but tar files for -A 2/-A 4.
       self.MAXWORKERS = 2         # default maximum concurrent workers per command (-W)
-      self.WORKGRACE = 6*3600     # 6 hours before a running job is judged on progress
+      self.WORKGRACE = 2*3600     # 2 hours before a running job is judged on progress
       self.MINWPROJ = 0.9         # projected done fraction at the walltime that counts as finishing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
@@ -431,8 +431,9 @@ class DsQuasar(PgCMD, PgSplit):
          dargv = dargv[0:100]
       return self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN)
 
-   # a running batch job counts as stalled once it has run longer than WORKGRACE and its
-   # progress so far projects to less than MINWPROJ of its recorded work by the walltime:
+   # a running batch job counts as stalled once it has run longer than WORKGRACE, has
+   # recorded some work done, and its progress so far projects to less than MINWPROJ of
+   # its recorded work by the walltime:
    # such a job cannot finish this attempt however long it is left alone, so an extra
    # worker is what helps it, not more retries.
    # the test is on the RATE, not on an absolute done fraction as it first was. a fixed
@@ -447,11 +448,15 @@ class DsQuasar(PgCMD, PgSplit):
    # runs this and set_walltime_deadline reads the granted walltime back in the batch job.
    # when the daemon caps it to a shorter queue limit the projection is optimistic, which
    # errs towards leaving the job alone.
+   # a job that has recorded nothing done is still in its gather phases, which read as a
+   # zero rate; it is left for the next submit rather than judged. that guard is what lets
+   # WORKGRACE stay short: an extra worker can only be added by a cron submit, every 4
+   # hours, so a 6 hour grace kept it out of the first 6 to 10 hours of every attempt.
    def worker_progress_stalled(self, pgrec):
       if not (pgrec['pid'] and pgrec['stttime']): return False
       if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
       elapsed = tm() - pgrec['stttime']
-      if elapsed < self.WORKGRACE: return False
+      if elapsed < self.WORKGRACE or not pgrec['dcount']: return False
       done = pgrec['dcount']/pgrec['fcount'] if pgrec['fcount'] else 0
       return (done*self.WALLTIME/elapsed) < self.MINWPROJ
 
@@ -1398,11 +1403,19 @@ class DsQuasar(PgCMD, PgSplit):
          ofile = self.join_paths(dsid, fname)
          info = self.check_object_file(ofile, bucket, 1, self.ERRACT)
          if not info: return False
-         lfile = "{}/{}/{}/{}".format(chome, self.PGLOG['BACKUPEP'], dsid, fname)
-         self.object_copy_local(lfile, ofile, bucket, self.ERRACT)
-         cinfo = self.check_local_file(lfile, 32, self.ERRACT)
-         if not cinfo: return False
-         if 'checksum' in cinfo: info['checksum'] = cinfo['checksum']
+         # an object still matching its record on size and time, with its checksum
+         # recorded already, has nothing to evaluate: downloading it only to md5 it
+         # again costs a transfer per file, and dsarch downloads it anyway to tar it.
+         # a directory key such as a zarr store has no checksum, so it is always fetched
+         if not (info['isfile'] and pgrec['checksum'] and info['data_size'] == pgrec['data_size'] and
+                 self.cmptime(info['date_modified'], info['time_modified'],
+                              pgrec['date_modified'], pgrec['time_modified']) == 0):
+            lfile = "{}/{}/{}/{}".format(chome, self.PGLOG['BACKUPEP'], dsid, fname)
+            # pass info on so the object is not listed a second time
+            if not self.object_copy_local(lfile, ofile, bucket, self.ERRACT, info): return False
+            cinfo = self.check_local_file(lfile, 32, self.ERRACT)
+            if not cinfo: return False
+            if 'checksum' in cinfo: info['checksum'] = cinfo['checksum']
          lname = 'OBS'
       else:
          lfile = "{}/{}/".format(chome, dsid)
