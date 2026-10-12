@@ -861,11 +861,19 @@ class DsTACC(PgCMD, PgSplit):
          ofile = self.join_paths(dsid, fname)
          info = self.check_object_file(ofile, bucket, 1, self.ERRACT)
          if not info: return False
-         lfile = "{}/{}/{}/{}".format(chome, self.PGLOG['BACKUPEP'], dsid, fname)
-         self.object_copy_local(lfile, ofile, bucket, self.ERRACT)
-         cinfo = self.check_local_file(lfile, 32, self.ERRACT)
-         if not cinfo: return False
-         if 'checksum' in cinfo: info['checksum'] = cinfo['checksum']
+         # an object still matching its record on size and time, with its checksum
+         # recorded already, has nothing to evaluate: downloading it only to md5 it
+         # again costs a transfer per file, and dsarch downloads it anyway to tar it.
+         # a directory key such as a zarr store has no checksum, so it is always fetched
+         if not (info['isfile'] and pgrec['checksum'] and info['data_size'] == pgrec['data_size'] and
+                 self.cmptime(info['date_modified'], info['time_modified'],
+                              pgrec['date_modified'], pgrec['time_modified']) == 0):
+            lfile = "{}/{}/{}/{}".format(chome, self.PGLOG['BACKUPEP'], dsid, fname)
+            # pass info on so the object is not listed a second time
+            if not self.object_copy_local(lfile, ofile, bucket, self.ERRACT, info): return False
+            cinfo = self.check_local_file(lfile, 32, self.ERRACT)
+            if not cinfo: return False
+            if 'checksum' in cinfo: info['checksum'] = cinfo['checksum']
          lname = 'OBS'
       else:
          lfile = "{}/{}/".format(chome, dsid)
