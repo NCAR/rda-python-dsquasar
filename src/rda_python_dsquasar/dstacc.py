@@ -79,6 +79,8 @@ class DsTACC(PgCMD, PgSplit):
       self.TARSIZE = 1024*self.PGLOG['ONEGBS']   # 1TB, tarfile size limit
       self.MINSIZE = 512*self.PGLOG['ONEGBS']    # .5TB, minimal tarfile size
       self.ONESIZE = 20*self.PGLOG['ONEGBS']  # 20GB, minimal file size to tar a single file 
+      self.MISSLOG = 10   # files named in the log per dataset when missing from storage
+      self.MISSCNT = 0    # files of the current dataset missing from storage
       self.TFCOUNT = 1000000      # if file count is greater, use self.MINSIZE for tar file
       self.PGBACK = {
          'workdir' : "{}/{}/tacc_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
@@ -731,6 +733,7 @@ class DsTACC(PgCMD, PgSplit):
       fd = None
       fcate = filetype.lower()
       tname = fcate + 'file'
+      self.MISSCNT = 0   # files missing from their storage location
       for i in range(fcnt):
          pgrec = recs[i]
          if not self.evaluate_file_stat(dsid, fcate, pgrec): continue
@@ -754,6 +757,12 @@ class DsTACC(PgCMD, PgSplit):
          fd = None
          self.process_one_backup_file(qinfo, True, (fcnt-i) > 1)
       if fd: fd.close()
+      mcnt = self.MISSCNT
+      if mcnt:
+         # one line per dataset reaches the email; the first file names are in the log
+         s = 's' if mcnt > 1 else ''
+         ftype = 'Saved' if fcate == 's' else 'Web'
+         self.pglog("{}: {} of {} {} file{} missing from storage, not backed up".format(dsid, mcnt, fcnt, ftype, s), self.LOGACT)
 
    # initialize dataset backup dict structure
    @staticmethod
@@ -851,7 +860,21 @@ class DsTACC(PgCMD, PgSplit):
          rcnt += 1
       return rcnt
 
-   # evaluate file stat on disk/object storage and modify RDADB record if not match
+   # log a GDEX file whose record waits for backup but whose data is not where its
+   # locflag says. the check functions return None for a missing file without logging
+   # it, so such a file used to be skipped silently, run after run. only the first
+   # MISSLOG files of a dataset are named, so a dataset missing thousands of files does
+   # not flood the log every run. returns None, which tells the caller the file is
+   # missing rather than failed
+   def missing_file_stat(self, dsid, cate, fname, path):
+      self.MISSCNT += 1
+      if self.MISSCNT <= self.MISSLOG:
+         self.pglog("{}-{}-{}: Missing {}".format(dsid, cate.upper(), fname, path), self.LOGWRN)
+      return None
+
+   # evaluate file stat on disk/object storage and modify RDADB record if not match.
+   # returns True to back the file up, False when it cannot be checked, and None
+   # when it is missing from its storage location
    def evaluate_file_stat(self, dsid, cate, pgrec):
       tname = cate + 'file'
       fname = pgrec[tname]
@@ -860,6 +883,7 @@ class DsTACC(PgCMD, PgSplit):
          bucket = 'gdex-decsdata' if cate == 's' else self.PGLOG['OBJCTBKT']
          ofile = self.join_paths(dsid, fname)
          info = self.check_object_file(ofile, bucket, 1, self.ERRACT)
+         if info is None: return self.missing_file_stat(dsid, cate, fname, "{}:{}".format(bucket, ofile))
          if not info: return False
          # an object still matching its record on size and time, with its checksum
          # recorded already, has nothing to evaluate: downloading it only to md5 it
@@ -880,6 +904,7 @@ class DsTACC(PgCMD, PgSplit):
          if cate == 's': lfile += pgrec['type'] + '/'
          lfile += fname
          info = self.check_local_file(lfile, 33, self.ERRACT)
+         if info is None: return self.missing_file_stat(dsid, cate, fname, lfile)
          if not info: return False
          lname = 'DSK'
       record = {}      
