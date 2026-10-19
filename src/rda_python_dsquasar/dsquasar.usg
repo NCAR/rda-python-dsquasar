@@ -30,9 +30,9 @@
           two classes back up at very different rates: an O dataset has every
           file staged down from the object store and checksummed before it can
           be tarred, while a G dataset is only stat'ed.  -L is optional: without
-          it a run works all the G datasets first and the O ones after them, so
-          the slow downloads cannot hold up the fast Glade work.  Defaults to
-          all datasets.
+          it the first worker (and a run without -w) starts on the O datasets,
+          so the slow downloads get the most time, and a second worker (-w 2)
+          starts on the G datasets.  Defaults to all datasets.
 
           -L G and -L O together always cover every dataset, so a pair of runs
           loses nothing.  The split is by dataset, though, and dataset.locflag

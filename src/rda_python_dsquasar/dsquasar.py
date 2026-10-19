@@ -276,15 +276,17 @@ class DsQuasar(PgCMD, PgSplit):
          dsid = self.format_dataset_id(dsid)
          if dsid not in self.dsids: self.dsids.append(dsid)
 
-   # move the -t datasets on the object store behind the ones on Glade, keeping the given
-   # (or worker-reversed) order within each class; see dsid_order for why
+   # put the -t datasets on the object store first for an odd worker slot and the ones on
+   # Glade first for an even one, keeping the given (or worker-reversed) order within each
+   # class; see dsid_order for why
    def order_dsids(self):
       if len(self.dsids) < 2: return
       dcnd = "locflag = 'O' AND dsid IN ('{}')".format("', '".join(self.dsids))
       pgrecs = self.pgmget('dataset', 'dsid', dcnd, self.LGWNEX)
       if not pgrecs: return
       odsids = set(pgrecs['dsid'])
-      self.dsids.sort(key = lambda dsid: dsid in odsids)
+      reverse = self.reverse_dsids()
+      self.dsids.sort(key = lambda dsid: (dsid in odsids) == reverse)
 
    # Check backup and file information and dump the backup statistics#
    def dump_statistics_action(self):   
@@ -1518,19 +1520,20 @@ class DsQuasar(PgCMD, PgSplit):
       if self.pgget_wfile(dsid, 'wid', "bid " + bcnd, self.LGWNEX): fopt |= self.WOPT
       return fopt
 
-   # dataset ordering for gathering work. the datasets on Glade come first and the ones on
-   # the object store last: an Object(O) dataset has every file staged down from Boreas and
-   # checksummed before it can be tarred, while a Glade one is only stat'ed, so the fast
-   # Glade work is done before the slow downloads can eat the walltime. dataset.locflag is
-   # matched as "O" / "not O" (a NULL locflag counts as Glade), the same split -L uses.
-   # within each class even worker slots start from the high end (d999999) and odd ones
-   # from the low end, so that a pair of workers meets in the middle instead of fighting
-   # over the same dataset locks. bfile has no locflag, so its records are matched through
-   # their dataset
+   # dataset ordering for gathering work. an odd worker slot starts on the datasets on the
+   # object store and an even one on the datasets on Glade: an Object(O) dataset has every
+   # file staged down from Boreas and checksummed before it can be tarred, while a Glade
+   # one is only stat'ed, so the slow downloads get the most time from the first worker
+   # while an added second worker clears the fast Glade work. an even slot walks the exact
+   # reverse of an odd one (Glade from d999999 down, then the object store from d999999
+   # down), so that a pair of workers meets in the middle instead of fighting over the same
+   # dataset locks. dataset.locflag is matched as "O" / "not O" (a NULL locflag counts as
+   # Glade), the same split -L uses. bfile has no locflag, so its records are matched
+   # through their dataset
    def dsid_order(self, bfile = False):
       ocnd = "dsid IN (SELECT dsid FROM dataset WHERE locflag = 'O')" if bfile else "locflag = 'O'"
       dord = " DESC" if self.reverse_dsids() else ""
-      return " ORDER BY CASE WHEN {} THEN 1 ELSE 0 END, dsid{}".format(ocnd, dord)
+      return " ORDER BY CASE WHEN {} THEN 0 ELSE 1 END{}, dsid{}".format(ocnd, dord, dord)
 
    # whether this worker slot walks the datasets from the high end
    def reverse_dsids(self):
@@ -1542,8 +1545,8 @@ class DsQuasar(PgCMD, PgSplit):
       # warn per named dataset with no files; stay silent when scanning all datasets
       logact = self.LOGWRN if self.dsids else 0
       flds = "dsid, backflag, pid, lockhost"
-      # -L limits the run to where the data sits. it is optional: without it the Glade
-      # datasets are worked first and the object store ones after them (see dsid_order).
+      # -L limits the run to where the data sits. it is optional: without it an odd worker
+      # slot starts on the object store datasets and an even one on Glade (see dsid_order).
       # G is matched as "not O" rather than "= G" on purpose: dataset.locflag is only a
       # summary of the per-file flags (set_dataset_locflag writes it only when every public
       # web file agrees, and leaves the old value otherwise), so it can hold a stale value.
