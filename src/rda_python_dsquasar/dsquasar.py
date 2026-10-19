@@ -89,7 +89,12 @@ class DsQuasar(PgCMD, PgSplit):
       self.SUBLMTS = 2000         # file count limit for a sub-group
       # tarring (TARACT) forks one child per tar file, so its parallel unit is the tar
       # file: use a small per-process limit and a high cap to spread the work widely.
-      self.MPTLIMIT = 200         # tar file count per batch process for tarring
+      self.MPTLIMIT = 200         # tar file count per batch process for tarring on Glade
+      # a tar file of an object store dataset has every member staged down from Boreas and
+      # checksummed first, so it takes many times longer than a Glade one: give it a
+      # process per far fewer tar files. this is the only way to speed up a backlog held
+      # in one dataset, since a second worker cannot share the dataset lock.
+      self.MPOLIMIT = 20          # tar file count per batch process for tarring on the object store
       self.MPTMAX = 12            # maximum number of batch processes for tarring
       # uploading (BCKACT) forks one child per BCKSIZE transfer batch (~BCKSIZE/TARSIZE
       # tar files each), so far fewer parallel units than tar files: use a large
@@ -107,8 +112,9 @@ class DsQuasar(PgCMD, PgSplit):
       # dscheck work done, which is action independent because dcount counts GDEX files
       # for -A 3 but tar files for -A 2/-A 4.
       self.MAXWORKERS = 2         # default maximum concurrent workers per command (-W)
-      self.WORKGRACE = 2*3600     # 2 hours before a running job is judged on progress
-      self.MINWPROJ = 0.9         # projected done fraction at the walltime that counts as finishing
+      self.WORKGRACE = 3600       # 1 hour before a running job is judged on progress
+      self.GATHGRACE = 2*3600     # 2 hours before a job with nothing done yet counts as stalled
+      self.MINWPROJ = 1.5         # projected done fraction at the walltime that counts as finishing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -202,6 +208,7 @@ class DsQuasar(PgCMD, PgSplit):
       # an even worker slot walks the datasets from the other end so that it and the odd
       # slot before it meet in the middle instead of fighting over the same dataset locks
       if self.reverse_dsids(): self.dsids.reverse()
+      self.order_dsids()
       self.PGBACK['cmd'] = "dsquasar {}".format(' '.join(argv))
 
    # do quasar backup process
@@ -274,6 +281,18 @@ class DsQuasar(PgCMD, PgSplit):
       else:
          dsid = self.format_dataset_id(dsid)
          if dsid not in self.dsids: self.dsids.append(dsid)
+
+   # put the -t datasets on the object store first for an odd worker slot and the ones on
+   # Glade first for an even one, keeping the given (or worker-reversed) order within each
+   # class; see dsid_order for why
+   def order_dsids(self):
+      if len(self.dsids) < 2: return
+      dcnd = "locflag = 'O' AND dsid IN ('{}')".format("', '".join(self.dsids))
+      pgrecs = self.pgmget('dataset', 'dsid', dcnd, self.LGWNEX)
+      if not pgrecs: return
+      odsids = set(pgrecs['dsid'])
+      reverse = self.reverse_dsids()
+      self.dsids.sort(key = lambda dsid: (dsid in odsids) == reverse)
 
    # Check backup and file information and dump the backup statistics#
    def dump_statistics_action(self):   
@@ -375,7 +394,8 @@ class DsQuasar(PgCMD, PgSplit):
    # file (one child per tar): new infiles CINACT will create this run (estimated from
    # the total bytes of GDEX files ready to back up, ~one tar per TARSIZE) plus existing
    # status 'N' infile records to build (TARACT), scaled one process per MPTLIMIT tar
-   # files, capped at MPTMAX. uploading's unit is the BCKSIZE transfer batch (one child
+   # files on Glade or one per MPOLIMIT tar files on the object store, the two summed and
+   # capped at MPTMAX. uploading's unit is the BCKSIZE transfer batch (one child
    # per ~BCKSIZE/TARSIZE tar files): existing status 'T' tar records to transfer
    # (BCKACT), scaled one process per MPBLIMIT tar files, capped at MPBMAX. the phases
    # run sequentially in one run and share a single reserved ncpus, so return the max of
@@ -383,16 +403,34 @@ class DsQuasar(PgCMD, PgSplit):
    # never reaches here and stays single process.
    def batch_process_count(self, acts):
       mproc = 1
-      tcnt = 0
+      gcnt = ocnt = 0   # tar files on Glade and on the object store
+      # an extra worker cannot touch the datasets another live process holds, typically the
+      # big object store dataset worker 1 is on, so it leaves them out of its sizing as its
+      # real gather will; counting them reserved worker 1's cpus again for the Glade work
+      # left. the gather's unlock pass skips a live holder and frees a dead one's lock.
+      # worker 1 keeps counting everything: a held dataset is usually released well within
+      # its 24 hours, and checking each holder costs an rdaps call per dataset
+      extra = self.PGBACK['worker'] > 1
       if acts&self.CINACT:
-         sizes = [0]
-         if self.gather_dataset_files(None, False, sizes):
-            tcnt += max(1, (sizes[0] + self.TARSIZE - 1)//self.TARSIZE)
-      if acts&self.TARACT: tcnt += self.batch_tar_count('N')
-      if tcnt > self.MPTLIMIT:
-         tproc = (tcnt + self.MPTLIMIT - 1)//self.MPTLIMIT
-         if tproc > self.MPTMAX: tproc = self.MPTMAX
-         if tproc > mproc: mproc = tproc
+         sizes = [0, 0]   # bytes on Glade and on the object store
+         if self.gather_dataset_files(None, extra, sizes):
+            gcnt += (sizes[0] + self.TARSIZE - 1)//self.TARSIZE
+            ocnt += (sizes[1] + self.TARSIZE - 1)//self.TARSIZE
+            if not (gcnt or ocnt): gcnt = 1
+      if acts&self.TARACT:
+         # a dataset lock left by a dead process also drops out here, though the gather
+         # would free it; that undercounts by a stale lock's infiles at most
+         xcnd = " AND dsid NOT IN (SELECT dsid FROM dataset WHERE pid > 0)" if extra else ''
+         ncnt = self.batch_tar_count('N', None, xcnd)
+         oncnt = self.batch_tar_count('N', 'O', xcnd) if ncnt else 0
+         gcnt += ncnt - oncnt
+         ocnt += oncnt
+      # ceil(gcnt/MPTLIMIT + ocnt/MPOLIMIT): one process per MPTLIMIT Glade tar files plus
+      # one per MPOLIMIT object store tar files, rounded up once over the sum
+      tunit = self.MPTLIMIT*self.MPOLIMIT
+      tproc = (gcnt*self.MPOLIMIT + ocnt*self.MPTLIMIT + tunit - 1)//tunit
+      if tproc > self.MPTMAX: tproc = self.MPTMAX
+      if tproc > mproc: mproc = tproc
       if acts&self.BCKACT:
          bcnt = self.batch_tar_count('T')
          if bcnt > self.MPBLIMIT:
@@ -401,10 +439,25 @@ class DsQuasar(PgCMD, PgSplit):
             if bproc > mproc: mproc = bproc
       return mproc
 
-   # count the bfile tar records of a given status honoring backflag/dataset scope
-   def batch_tar_count(self, status):
+   # the -L scope of a bfile condition, or the scope of the given locflag. bfile has no
+   # locflag, so a record is matched through its dataset with the same "O" / "not O" split
+   # gather_dataset_files uses, keeping the two halves exhaustive. without it an -L O and
+   # an -L G run that overlap each tar, transfer and report the tar records of both halves
+   def bfile_locflag_condition(self, locflag = None):
+      if not locflag: locflag = self.PGBACK['locflag']
+      if not locflag: return ''
+      lnot = '' if locflag == 'O' else 'NOT '
+      return " AND dsid {}IN (SELECT dsid FROM dataset WHERE locflag = 'O')".format(lnot)
+
+   # count the bfile tar records of a given status honoring backflag/dataset/locflag scope;
+   # a locflag given narrows the count further to that half, inside any -L scope, and xcnd
+   # is any extra condition to AND on
+   def batch_tar_count(self, status, locflag = None, xcnd = ''):
       bcnd = "status = '{}'".format(status)
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
+      if locflag: bcnd += self.bfile_locflag_condition(locflag)
+      bcnd += xcnd
       if self.dsids:
          tcnt = 0
          for dsid in self.dsids:
@@ -433,11 +486,16 @@ class DsQuasar(PgCMD, PgSplit):
          dargv = dargv[0:100]
       return self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN)
 
-   # a running batch job counts as stalled once it has run longer than WORKGRACE, has
-   # recorded some work done, and its progress so far projects to less than MINWPROJ of
-   # its recorded work by the walltime:
-   # such a job cannot finish this attempt however long it is left alone, so an extra
-   # worker is what helps it, not more retries.
+   # a running batch job counts as stalled once it has run longer than WORKGRACE and its
+   # progress so far projects to less than MINWPROJ of its recorded work by the walltime,
+   # or once it has run longer than GATHGRACE with nothing recorded done at all:
+   # such a job cannot finish this attempt comfortably however long it is left alone, so an
+   # extra worker is what helps it, not more retries.
+   # MINWPROJ is above 1 on purpose: the first worker starts on the slow object store
+   # datasets and an extra one on the fast Glade ones (see dsid_order), so a second worker
+   # is wanted whenever the first is not well on its way to finishing, not only when it is
+   # sure to miss the walltime. 1.5 leaves alone only a job on pace to finish within about
+   # two thirds of the walltime.
    # the test is on the RATE, not on an absolute done fraction as it first was. a fixed
    # 1% threshold only catches a job that is nearly frozen, and reads a job that needs
    # weeks as progressing: the real case was 2% done after 13H35M of a 24 hour walltime,
@@ -450,15 +508,19 @@ class DsQuasar(PgCMD, PgSplit):
    # runs this and set_walltime_deadline reads the granted walltime back in the batch job.
    # when the daemon caps it to a shorter queue limit the projection is optimistic, which
    # errs towards leaving the job alone.
-   # a job that has recorded nothing done is still in its gather phases, which read as a
-   # zero rate; it is left for the next submit rather than judged. that guard is what lets
-   # WORKGRACE stay short: an extra worker can only be added by a cron submit, every 4
-   # hours, so a 6 hour grace kept it out of the first 6 to 10 hours of every attempt.
+   # a job that has recorded nothing done may still be in its gather phases, which read as
+   # a zero rate, so it gets the longer GATHGRACE before it is judged. but a job that has
+   # recorded nothing after that long, typically one downloading its first object store
+   # dataset (dcount is only flushed every pstep files), is the slowest case of all and
+   # must not be left alone forever. the graces stay short because an extra worker can
+   # only be added by a cron submit, every 4 hours: a 6 hour grace kept it out of the first
+   # 6 to 10 hours of every attempt.
    def worker_progress_stalled(self, pgrec):
       if not (pgrec['pid'] and pgrec['stttime']): return False
       if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
       elapsed = tm() - pgrec['stttime']
-      if elapsed < self.WORKGRACE or not pgrec['dcount']: return False
+      if elapsed < self.WORKGRACE: return False
+      if not pgrec['dcount']: return elapsed >= self.GATHGRACE
       done = pgrec['dcount']/pgrec['fcount'] if pgrec['fcount'] else 0
       return (done*self.WALLTIME/elapsed) < self.MINWPROJ
 
@@ -609,7 +671,7 @@ class DsQuasar(PgCMD, PgSplit):
          self.check_batch_deadline()
          if len(qinfo['dsids']) == self.DSCNT: self.process_one_backup_file(qinfo, True, False)
          if self.PGBACK['dolock'] and dsid not in qinfo['dslocks']:
-            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            if self.lock_work_dataset(dsid) < 1: continue
             qinfo['dslocks'].append(dsid)
             if not self.regather_dataset_files(bfiles, dsid, backflag):
                self.lock_dataset(dsid, 0, self.LGEREX)
@@ -675,12 +737,27 @@ class DsQuasar(PgCMD, PgSplit):
    # run, including the primary one, are left alone. returns the datasets locked here, to be
    # unlocked once the tar file is dispatched, or None if one of them is held by another
    # worker, in which case nothing new is left locked and the tar file must wait for a later run
+   # lock a dataset before working on it. a dataset held by another live process is the
+   # normal case once a second worker or the other backup action runs, and the library
+   # wording for it ("Locked by N/PBS: Cannot Relock") was logged as an ERROR, which counted
+   # in the error count and the error email although the dataset is just skipped. lock
+   # quietly and report the skip as information instead, naming the holder; a database
+   # error is still logged as an error by lock_dataset. returns what lock_dataset returns:
+   # 1 locked, -1 held by another process, 0 no dataset record or a database error
+   def lock_work_dataset(self, dsid, logact = None):
+      lstat = self.lock_dataset(dsid, 1, 0)
+      if lstat < 0:
+         pgrec = self.pgget('dataset', 'pid, lockhost', "dsid = '{}'".format(dsid), self.LOGERR)
+         holder = "{}/{}".format(pgrec['pid'], pgrec['lockhost']) if pgrec else 'another process'
+         self.pglog("{}: skipped, locked by {}".format(dsid, holder), self.LOGACT if logact is None else logact)
+      return lstat
+
    def lock_backup_datasets(self, qinfo, dsids):
       dslocks = []
       if not self.PGBACK['dolock']: return dslocks
       for dsid in dsids:
          if dsid in qinfo['dslocks']: continue
-         if self.lock_dataset(dsid, 1, self.LOGERR) < 1:
+         if self.lock_work_dataset(dsid, self.DTLACT) < 1:
             self.unlock_backup_datasets(qinfo, dslocks)
             return None
          qinfo['dslocks'].append(dsid)
@@ -720,7 +797,7 @@ class DsQuasar(PgCMD, PgSplit):
                'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
          if self.PGBACK['dolock']:
-            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            if self.lock_work_dataset(dsid) < 1: continue
             qinfo['dslocks'].append(dsid)
          for bid in bfiles[dsid]:
             self.check_batch_deadline()
@@ -1497,11 +1574,20 @@ class DsQuasar(PgCMD, PgSplit):
       if self.pgget_wfile(dsid, 'wid', "bid " + bcnd, self.LGWNEX): fopt |= self.WOPT
       return fopt
 
-   # dataset ordering for gathering work; even worker slots start from the high end (d999999)
-   # and odd ones from the low end, so that a pair of workers meets in the middle instead of
-   # fighting over the same dataset locks
-   def dsid_order(self):
-      return " ORDER BY dsid DESC" if self.reverse_dsids() else " ORDER BY dsid"
+   # dataset ordering for gathering work. an odd worker slot starts on the datasets on the
+   # object store and an even one on the datasets on Glade: an Object(O) dataset has every
+   # file staged down from Boreas and checksummed before it can be tarred, while a Glade
+   # one is only stat'ed, so the slow downloads get the most time from the first worker
+   # while an added second worker clears the fast Glade work. an even slot walks the exact
+   # reverse of an odd one (Glade from d999999 down, then the object store from d999999
+   # down), so that a pair of workers meets in the middle instead of fighting over the same
+   # dataset locks. dataset.locflag is matched as "O" / "not O" (a NULL locflag counts as
+   # Glade), the same split -L uses. bfile has no locflag, so its records are matched
+   # through their dataset
+   def dsid_order(self, bfile = False):
+      ocnd = "dsid IN (SELECT dsid FROM dataset WHERE locflag = 'O')" if bfile else "locflag = 'O'"
+      dord = " DESC" if self.reverse_dsids() else ""
+      return " ORDER BY CASE WHEN {} THEN 0 ELSE 1 END{}, dsid{}".format(ocnd, dord, dord)
 
    # whether this worker slot walks the datasets from the high end
    def reverse_dsids(self):
@@ -1512,11 +1598,9 @@ class DsQuasar(PgCMD, PgSplit):
       fcnt = 0
       # warn per named dataset with no files; stay silent when scanning all datasets
       logact = self.LOGWRN if self.dsids else 0
-      flds = "dsid, backflag, pid, lockhost"
-      # -L splits the work by where the data sits: an Object(O) dataset has to be staged
-      # down from the object store and checksummed before it can be tarred, while a Glade(G)
-      # one is only stat'ed, so the two classes run at wildly different rates and are better
-      # off in separate runs than sharing one walltime.
+      flds = "dsid, backflag, locflag, pid, lockhost"
+      # -L limits the run to where the data sits. it is optional: without it an odd worker
+      # slot starts on the object store datasets and an even one on Glade (see dsid_order).
       # G is matched as "not O" rather than "= G" on purpose: dataset.locflag is only a
       # summary of the per-file flags (set_dataset_locflag writes it only when every public
       # web file agrees, and leaves the old value otherwise), so it can hold a stale value.
@@ -1557,7 +1641,14 @@ class DsQuasar(PgCMD, PgSplit):
                if lstat < 0:
                   self.pglog("{}: skipped, still in use by {}/{}".format(dsid, pgrec['pid'], pgrec['lockhost']), self.LOGACT)
                continue
-         fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact, sizes)
+         if sizes is None:
+            fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact)
+         else:
+            # sizes holds the bytes ready on Glade and on the object store apart, since a
+            # tar file of each takes a very different time to build (see MPOLIMIT)
+            dsizes = [0]
+            fcnt += self.get_dataset_files(dsid, dsfiles, pgrec['backflag'], logact, dsizes)
+            sizes[1 if pgrec['locflag'] == 'O' else 0] += dsizes[0]
       if dsfiles:
          s = 's' if fcnt > 1 else ''
          bmsg = self.BACKMSG[self.PGBACK['backflag']] if self.PGBACK['backflag'] else 'backup' 
@@ -1571,10 +1662,11 @@ class DsQuasar(PgCMD, PgSplit):
       bcnd = "status = 'N'"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, dsids, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + self.dsid_order()]
+         cnds = [bcnd + self.dsid_order(True)]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0
@@ -1597,10 +1689,11 @@ class DsQuasar(PgCMD, PgSplit):
       bcnd = "status = 'T'"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + self.dsid_order()]
+         cnds = [bcnd + self.dsid_order(True)]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0

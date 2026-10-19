@@ -1161,10 +1161,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
   s.addText("One child per tar file \u2014 many small, cheap units.", {
     x:0.75, y:2.85, w:5.6, h:0.3, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
-  code(s, 0.75, 3.2, 5.6, 0.75,
-    "MPTLIMIT = 200   tar files per process\nMPTMAX   =  12   process ceiling", 11.5);
-  s.addText("A small divisor with a high cap: lots of tar work should spread wide.", {
-    x:0.75, y:4.05, w:5.6, h:0.6, fontFace:SANS, fontSize:11, color:INK,
+  code(s, 0.75, 3.2, 5.6, 0.85,
+    "MPTLIMIT = 200   Glade tar files per process\nMPOLIMIT =  20   object store tar files per process\nMPTMAX   =  12   process ceiling", 11.5);
+  s.addText("A small divisor with a high cap: lots of tar work should spread wide, object store tars (download first) widest.", {
+    x:0.75, y:4.12, w:5.6, h:0.6, fontFace:SANS, fontSize:11, color:INK,
     margin:0, valign:"top" });
 
   // uploading card
@@ -1257,11 +1257,11 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
 
   s.addText("Stall test", { x:0.5, y:2.35, w:6.05, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
-  s.addText("A repeat submit inspects the running job. All three must hold:", {
+  s.addText("A repeat submit inspects the running job. Either way counts as stalled:", {
     x:0.5, y:2.7, w:6.05, h:0.32, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
   code(s, 0.5, 3.05, 6.05, 1.05,
-    "runtime  >  WORKGRACE  (2 hours)\ndcount   >  0  (gather finished)\ndone rate x walltime  <  MINWPROJ  (90 %)", 12);
-  s.addText("A job that cannot finish its recorded work this attempt is treated as stalled, and the next cron submit adds an extra worker alongside it \u2014 up to -W MaxWorkers, default 2.", {
+    "runtime > WORKGRACE (1 hour) and\n   done rate x walltime < MINWPROJ (150 %)\nruntime > GATHGRACE (2 hours) and dcount = 0", 12);
+  s.addText("A job that is not well on its way to finishing its recorded work this attempt is treated as stalled, and the next cron submit adds an extra worker alongside it \u2014 up to -W MaxWorkers, default 2.", {
     x:0.5, y:4.2, w:6.05, h:0.62, fontFace:SANS, fontSize:11.5, color:INK,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   code(s, 0.5, 4.9, 6.05, 0.45, "dsquasar -a -A 3 -b -d PBS -W 2", 12.5);
