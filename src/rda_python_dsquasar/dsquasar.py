@@ -401,10 +401,20 @@ class DsQuasar(PgCMD, PgSplit):
             if bproc > mproc: mproc = bproc
       return mproc
 
-   # count the bfile tar records of a given status honoring backflag/dataset scope
+   # the -L scope of a bfile condition. bfile has no locflag, so a record is matched through
+   # its dataset with the same "O" / "not O" split gather_dataset_files uses, keeping the
+   # two halves exhaustive. without it an -L O and an -L G run that overlap each tar,
+   # transfer and report the tar records of both halves
+   def bfile_locflag_condition(self):
+      if not self.PGBACK['locflag']: return ''
+      lnot = '' if self.PGBACK['locflag'] == 'O' else 'NOT '
+      return " AND dsid {}IN (SELECT dsid FROM dataset WHERE locflag = 'O')".format(lnot)
+
+   # count the bfile tar records of a given status honoring backflag/dataset/locflag scope
    def batch_tar_count(self, status):
       bcnd = "status = '{}'".format(status)
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
       if self.dsids:
          tcnt = 0
          for dsid in self.dsids:
@@ -1571,6 +1581,7 @@ class DsQuasar(PgCMD, PgSplit):
       bcnd = "status = 'N'"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, dsids, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
@@ -1597,6 +1608,7 @@ class DsQuasar(PgCMD, PgSplit):
       bcnd = "status = 'T'"
       flds = "bid, dsid, bfile, type, data_size size, (scount + wcount) fcnt, note"
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
+      bcnd += self.bfile_locflag_condition()
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
