@@ -97,9 +97,11 @@
    -m  ProcessCount
           Number of concurrent child processes.  Defaults to 1.  When -m is not
           given, a delayed backup run sizes the count from the number of tar
-          files it expects to handle and reserves matching PBS cpus, so in delay
-          mode the process count normally travels through the reserved cpus
-          rather than the command line.  An explicit -m overrides that sizing,
+          files it expects to handle (one process per 200 tar files on Glade
+          and per 20 on the object store, whose files are downloaded first, up
+          to 12) and reserves matching PBS cpus, so in delay mode the process
+          count normally travels through the reserved cpus rather than the
+          command line.  An explicit -m overrides that sizing,
           and -m 1 forces a single process.
 
    -n     Gather and show the available file counts only; no backup actions are

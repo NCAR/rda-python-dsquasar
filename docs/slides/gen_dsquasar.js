@@ -1161,10 +1161,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
   s.addText("One child per tar file \u2014 many small, cheap units.", {
     x:0.75, y:2.85, w:5.6, h:0.3, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
-  code(s, 0.75, 3.2, 5.6, 0.75,
-    "MPTLIMIT = 200   tar files per process\nMPTMAX   =  12   process ceiling", 11.5);
-  s.addText("A small divisor with a high cap: lots of tar work should spread wide.", {
-    x:0.75, y:4.05, w:5.6, h:0.6, fontFace:SANS, fontSize:11, color:INK,
+  code(s, 0.75, 3.2, 5.6, 0.85,
+    "MPTLIMIT = 200   Glade tar files per process\nMPOLIMIT =  20   object store tar files per process\nMPTMAX   =  12   process ceiling", 11.5);
+  s.addText("A small divisor with a high cap: lots of tar work should spread wide, object store tars (download first) widest.", {
+    x:0.75, y:4.12, w:5.6, h:0.6, fontFace:SANS, fontSize:11, color:INK,
     margin:0, valign:"top" });
 
   // uploading card
