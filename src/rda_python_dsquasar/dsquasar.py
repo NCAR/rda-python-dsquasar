@@ -202,6 +202,7 @@ class DsQuasar(PgCMD, PgSplit):
       # an even worker slot walks the datasets from the other end so that it and the odd
       # slot before it meet in the middle instead of fighting over the same dataset locks
       if self.reverse_dsids(): self.dsids.reverse()
+      self.order_dsids()
       self.PGBACK['cmd'] = "dsquasar {}".format(' '.join(argv))
 
    # do quasar backup process
@@ -274,6 +275,16 @@ class DsQuasar(PgCMD, PgSplit):
       else:
          dsid = self.format_dataset_id(dsid)
          if dsid not in self.dsids: self.dsids.append(dsid)
+
+   # move the -t datasets on the object store behind the ones on Glade, keeping the given
+   # (or worker-reversed) order within each class; see dsid_order for why
+   def order_dsids(self):
+      if len(self.dsids) < 2: return
+      dcnd = "locflag = 'O' AND dsid IN ('{}')".format("', '".join(self.dsids))
+      pgrecs = self.pgmget('dataset', 'dsid', dcnd, self.LGWNEX)
+      if not pgrecs: return
+      odsids = set(pgrecs['dsid'])
+      self.dsids.sort(key = lambda dsid: dsid in odsids)
 
    # Check backup and file information and dump the backup statistics#
    def dump_statistics_action(self):   
@@ -1507,11 +1518,19 @@ class DsQuasar(PgCMD, PgSplit):
       if self.pgget_wfile(dsid, 'wid', "bid " + bcnd, self.LGWNEX): fopt |= self.WOPT
       return fopt
 
-   # dataset ordering for gathering work; even worker slots start from the high end (d999999)
-   # and odd ones from the low end, so that a pair of workers meets in the middle instead of
-   # fighting over the same dataset locks
-   def dsid_order(self):
-      return " ORDER BY dsid DESC" if self.reverse_dsids() else " ORDER BY dsid"
+   # dataset ordering for gathering work. the datasets on Glade come first and the ones on
+   # the object store last: an Object(O) dataset has every file staged down from Boreas and
+   # checksummed before it can be tarred, while a Glade one is only stat'ed, so the fast
+   # Glade work is done before the slow downloads can eat the walltime. dataset.locflag is
+   # matched as "O" / "not O" (a NULL locflag counts as Glade), the same split -L uses.
+   # within each class even worker slots start from the high end (d999999) and odd ones
+   # from the low end, so that a pair of workers meets in the middle instead of fighting
+   # over the same dataset locks. bfile has no locflag, so its records are matched through
+   # their dataset
+   def dsid_order(self, bfile = False):
+      ocnd = "dsid IN (SELECT dsid FROM dataset WHERE locflag = 'O')" if bfile else "locflag = 'O'"
+      dord = " DESC" if self.reverse_dsids() else ""
+      return " ORDER BY CASE WHEN {} THEN 1 ELSE 0 END, dsid{}".format(ocnd, dord)
 
    # whether this worker slot walks the datasets from the high end
    def reverse_dsids(self):
@@ -1523,10 +1542,8 @@ class DsQuasar(PgCMD, PgSplit):
       # warn per named dataset with no files; stay silent when scanning all datasets
       logact = self.LOGWRN if self.dsids else 0
       flds = "dsid, backflag, pid, lockhost"
-      # -L splits the work by where the data sits: an Object(O) dataset has to be staged
-      # down from the object store and checksummed before it can be tarred, while a Glade(G)
-      # one is only stat'ed, so the two classes run at wildly different rates and are better
-      # off in separate runs than sharing one walltime.
+      # -L limits the run to where the data sits. it is optional: without it the Glade
+      # datasets are worked first and the object store ones after them (see dsid_order).
       # G is matched as "not O" rather than "= G" on purpose: dataset.locflag is only a
       # summary of the per-file flags (set_dataset_locflag writes it only when every public
       # web file agrees, and leaves the old value otherwise), so it can hold a stale value.
@@ -1585,7 +1602,7 @@ class DsQuasar(PgCMD, PgSplit):
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + self.dsid_order()]
+         cnds = [bcnd + self.dsid_order(True)]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0
@@ -1612,7 +1629,7 @@ class DsQuasar(PgCMD, PgSplit):
       if self.dsids:
          cnds = ["dsid = '{}' AND {}".format(dsid, bcnd) for dsid in self.dsids]
       else:
-         cnds = [bcnd + self.dsid_order()]
+         cnds = [bcnd + self.dsid_order(True)]
       for dcnd in cnds:
          pgrecs = self.pgmget("bfile", flds, dcnd, self.LGWNEX)
          bcnt = len(pgrecs['bid']) if pgrecs else 0

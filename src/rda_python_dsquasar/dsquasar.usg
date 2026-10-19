@@ -29,9 +29,9 @@
           store, G takes everything else.  Applies to -a and to -t alike.  The
           two classes back up at very different rates: an O dataset has every
           file staged down from the object store and checksummed before it can
-          be tarred, while a G dataset is only stat'ed.  Running them in one job
-          lets the slow class eat the whole walltime, so give them separate
-          runs, e.g. one submit with -L G and another with -L O.  Defaults to
+          be tarred, while a G dataset is only stat'ed.  -L is optional: without
+          it a run works all the G datasets first and the O ones after them, so
+          the slow downloads cannot hold up the fast Glade work.  Defaults to
           all datasets.
 
           -L G and -L O together always cover every dataset, so a pair of runs
