@@ -1161,10 +1161,10 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     fontFace:SANS, bold:true, fontSize:15, color:DEEP, margin:0 });
   s.addText("One child per tar file \u2014 many small, cheap units.", {
     x:0.75, y:2.85, w:5.6, h:0.3, fontFace:SANS, fontSize:11.5, color:MUTE, margin:0 });
-  code(s, 0.75, 3.2, 5.6, 0.85,
-    "MPTLIMIT = 200   Glade tar files per process\nMPOLIMIT =  20   object store tar files per process\nMPTMAX   =  12   process ceiling", 11.5);
-  s.addText("A small divisor with a high cap: lots of tar work should spread wide, object store tars (download first) widest.", {
-    x:0.75, y:4.12, w:5.6, h:0.6, fontFace:SANS, fontSize:11, color:INK,
+  code(s, 0.75, 3.18, 5.6, 1.08,
+    "MPTLIMIT = 200   Glade tar files per process\nMPOLIMIT =  20   Boreas tar files per process\nMPTMAX   =  12   process ceiling\nprocs = ceil(Glade/200 + Boreas/20)", 11);
+  s.addText("A small divisor with a high cap: tar work spreads wide, Boreas tars ten times wider.", {
+    x:0.75, y:4.34, w:5.6, h:0.4, fontFace:SANS, fontSize:11, color:INK,
     margin:0, valign:"top" });
 
   // uploading card
@@ -1180,9 +1180,9 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     x:7.15, y:4.05, w:5.5, h:0.6, fontFace:SANS, fontSize:11, color:INK,
     margin:0, valign:"top" });
 
-  s.addText("Why the two sets of numbers", { x:0.5, y:5.0, w:12.35, h:0.35,
+  s.addText("Why Boreas tars get more processes", { x:0.5, y:5.0, w:12.35, h:0.35,
     fontFace:SANS, bold:true, fontSize:15, color:INK, margin:0 });
-  s.addText("Both phases once shared a single limit. Tarring came out under-provisioned while uploading reserved cpus it could never use \u2014 cpus that PBS charges for and that other jobs then cannot have. Splitting the constants fixed both ends.", {
+  s.addText("Every member of a Boreas tar is staged down from the object store and checksummed before it is tarred, so it takes many times longer than a Glade tar. The backlog sat in one dataset, d694517 (~730 GB, ~146 tars): one process per 200 tars gave it 1, per 20 it gets 8.", {
     x:0.5, y:5.35, w:12.35, h:0.55, fontFace:SANS, fontSize:12, color:MUTE,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   s.addShape(p.ShapeType.roundRect, { x:0.5, y:6.0, w:12.35, h:0.6,
@@ -1280,17 +1280,17 @@ function reftable(s, x, y, w, colW, rows, hdr, hcolor, kcolor, fs) {
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   reftable(s, 6.9, 3.42, 5.95, [1.35, 4.6], [
     ["slot 1", "plain argv \u2014 repeat cron still blocks as a duplicate"],
-    ["odd",    "walks datasets in ascending dsid order"],
-    ["even",   "walks datasets descending, from d999999"],
+    ["odd",    "Boreas datasets first, then Glade; dsid ascending"],
+    ["even",   "Glade datasets first, then Boreas; dsid descending"],
   ], ["Slot", "Behaviour"], DEEP);
-  s.addText("A pair of workers therefore meets in the middle rather than fighting over the same dataset lock from the same end of the list.", {
+  s.addText("A pair of workers starts on different storage and meets in the middle rather than fighting over the same dataset lock.", {
     x:6.9, y:5.15, w:5.95, h:0.5, fontFace:SANS, fontSize:11.5, color:INK,
     margin:0, valign:"top", lineSpacingMultiple:1.05 });
   s.addShape(p.ShapeType.roundRect, { x:6.9, y:5.72, w:5.95, h:0.85,
     rectRadius:0.08, fill:{color:MID}, line:{type:"none"} });
   s.addText([
-    { text:"Not a fix for one huge dataset.  ", options:{ bold:true, color:AMBERLT } },
-    { text:"Locks are per dataset, so a second worker cannot help inside the dataset that is actually stuck.", options:{ color:"C3D7EE" } },
+    { text:"One huge dataset needs more processes.  ", options:{ bold:true, color:AMBERLT } },
+    { text:"Locks are per dataset, so a second worker cannot help inside it; more tar processes (MPOLIMIT) do.", options:{ color:"C3D7EE" } },
   ], { x:7.1, y:5.72, w:5.55, h:0.85, fontFace:SANS, fontSize:11,
        margin:0, valign:"middle", lineSpacingMultiple:1.05 });
   foot(s);
