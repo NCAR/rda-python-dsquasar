@@ -107,8 +107,9 @@ class DsQuasar(PgCMD, PgSplit):
       # dscheck work done, which is action independent because dcount counts GDEX files
       # for -A 3 but tar files for -A 2/-A 4.
       self.MAXWORKERS = 2         # default maximum concurrent workers per command (-W)
-      self.WORKGRACE = 2*3600     # 2 hours before a running job is judged on progress
-      self.MINWPROJ = 0.9         # projected done fraction at the walltime that counts as finishing
+      self.WORKGRACE = 3600       # 1 hour before a running job is judged on progress
+      self.GATHGRACE = 2*3600     # 2 hours before a job with nothing done yet counts as stalled
+      self.MINWPROJ = 1.5         # projected done fraction at the walltime that counts as finishing
       self.PGBACK = {
          'workdir' : "{}/{}/quasar_backup".format(self.PGLOG['GDEXWORK'], self.PGLOG['COMMONUSER']),
          'mproc' : 1,
@@ -456,11 +457,16 @@ class DsQuasar(PgCMD, PgSplit):
          dargv = dargv[0:100]
       return self.get_dscheck("dsquasar", dargv, self.PGBACK['workdir'], self.PGLOG['CURUID'], dargx, self.LOGWRN)
 
-   # a running batch job counts as stalled once it has run longer than WORKGRACE, has
-   # recorded some work done, and its progress so far projects to less than MINWPROJ of
-   # its recorded work by the walltime:
-   # such a job cannot finish this attempt however long it is left alone, so an extra
-   # worker is what helps it, not more retries.
+   # a running batch job counts as stalled once it has run longer than WORKGRACE and its
+   # progress so far projects to less than MINWPROJ of its recorded work by the walltime,
+   # or once it has run longer than GATHGRACE with nothing recorded done at all:
+   # such a job cannot finish this attempt comfortably however long it is left alone, so an
+   # extra worker is what helps it, not more retries.
+   # MINWPROJ is above 1 on purpose: the first worker starts on the slow object store
+   # datasets and an extra one on the fast Glade ones (see dsid_order), so a second worker
+   # is wanted whenever the first is not well on its way to finishing, not only when it is
+   # sure to miss the walltime. 1.5 leaves alone only a job on pace to finish within about
+   # two thirds of the walltime.
    # the test is on the RATE, not on an absolute done fraction as it first was. a fixed
    # 1% threshold only catches a job that is nearly frozen, and reads a job that needs
    # weeks as progressing: the real case was 2% done after 13H35M of a 24 hour walltime,
@@ -473,15 +479,19 @@ class DsQuasar(PgCMD, PgSplit):
    # runs this and set_walltime_deadline reads the granted walltime back in the batch job.
    # when the daemon caps it to a shorter queue limit the projection is optimistic, which
    # errs towards leaving the job alone.
-   # a job that has recorded nothing done is still in its gather phases, which read as a
-   # zero rate; it is left for the next submit rather than judged. that guard is what lets
-   # WORKGRACE stay short: an extra worker can only be added by a cron submit, every 4
-   # hours, so a 6 hour grace kept it out of the first 6 to 10 hours of every attempt.
+   # a job that has recorded nothing done may still be in its gather phases, which read as
+   # a zero rate, so it gets the longer GATHGRACE before it is judged. but a job that has
+   # recorded nothing after that long, typically one downloading its first object store
+   # dataset (dcount is only flushed every pstep files), is the slowest case of all and
+   # must not be left alone forever. the graces stay short because an extra worker can
+   # only be added by a cron submit, every 4 hours: a 6 hour grace kept it out of the first
+   # 6 to 10 hours of every attempt.
    def worker_progress_stalled(self, pgrec):
       if not (pgrec['pid'] and pgrec['stttime']): return False
       if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
       elapsed = tm() - pgrec['stttime']
-      if elapsed < self.WORKGRACE or not pgrec['dcount']: return False
+      if elapsed < self.WORKGRACE: return False
+      if not pgrec['dcount']: return elapsed >= self.GATHGRACE
       done = pgrec['dcount']/pgrec['fcount'] if pgrec['fcount'] else 0
       return (done*self.WALLTIME/elapsed) < self.MINWPROJ
 
