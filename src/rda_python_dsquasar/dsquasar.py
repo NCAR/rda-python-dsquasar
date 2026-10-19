@@ -404,15 +404,25 @@ class DsQuasar(PgCMD, PgSplit):
    def batch_process_count(self, acts):
       mproc = 1
       gcnt = ocnt = 0   # tar files on Glade and on the object store
+      # an extra worker cannot touch the datasets another live process holds, typically the
+      # big object store dataset worker 1 is on, so it leaves them out of its sizing as its
+      # real gather will; counting them reserved worker 1's cpus again for the Glade work
+      # left. the gather's unlock pass skips a live holder and frees a dead one's lock.
+      # worker 1 keeps counting everything: a held dataset is usually released well within
+      # its 24 hours, and checking each holder costs an rdaps call per dataset
+      extra = self.PGBACK['worker'] > 1
       if acts&self.CINACT:
          sizes = [0, 0]   # bytes on Glade and on the object store
-         if self.gather_dataset_files(None, False, sizes):
+         if self.gather_dataset_files(None, extra, sizes):
             gcnt += (sizes[0] + self.TARSIZE - 1)//self.TARSIZE
             ocnt += (sizes[1] + self.TARSIZE - 1)//self.TARSIZE
             if not (gcnt or ocnt): gcnt = 1
       if acts&self.TARACT:
-         ncnt = self.batch_tar_count('N')
-         oncnt = self.batch_tar_count('N', 'O') if ncnt else 0
+         # a dataset lock left by a dead process also drops out here, though the gather
+         # would free it; that undercounts by a stale lock's infiles at most
+         xcnd = " AND dsid NOT IN (SELECT dsid FROM dataset WHERE pid > 0)" if extra else ''
+         ncnt = self.batch_tar_count('N', None, xcnd)
+         oncnt = self.batch_tar_count('N', 'O', xcnd) if ncnt else 0
          gcnt += ncnt - oncnt
          ocnt += oncnt
       # ceil(gcnt/MPTLIMIT + ocnt/MPOLIMIT): one process per MPTLIMIT Glade tar files plus
@@ -440,12 +450,14 @@ class DsQuasar(PgCMD, PgSplit):
       return " AND dsid {}IN (SELECT dsid FROM dataset WHERE locflag = 'O')".format(lnot)
 
    # count the bfile tar records of a given status honoring backflag/dataset/locflag scope;
-   # a locflag given narrows the count further to that half, inside any -L scope
-   def batch_tar_count(self, status, locflag = None):
+   # a locflag given narrows the count further to that half, inside any -L scope, and xcnd
+   # is any extra condition to AND on
+   def batch_tar_count(self, status, locflag = None, xcnd = ''):
       bcnd = "status = '{}'".format(status)
       if self.PGBACK['backflag']: bcnd += " AND type = '{}'".format(self.PGBACK['backflag'])
       bcnd += self.bfile_locflag_condition()
       if locflag: bcnd += self.bfile_locflag_condition(locflag)
+      bcnd += xcnd
       if self.dsids:
          tcnt = 0
          for dsid in self.dsids:
