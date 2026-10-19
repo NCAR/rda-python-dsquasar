@@ -642,7 +642,7 @@ class DsQuasar(PgCMD, PgSplit):
          self.check_batch_deadline()
          if len(qinfo['dsids']) == self.DSCNT: self.process_one_backup_file(qinfo, True, False)
          if self.PGBACK['dolock'] and dsid not in qinfo['dslocks']:
-            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            if self.lock_work_dataset(dsid) < 1: continue
             qinfo['dslocks'].append(dsid)
             if not self.regather_dataset_files(bfiles, dsid, backflag):
                self.lock_dataset(dsid, 0, self.LGEREX)
@@ -708,12 +708,27 @@ class DsQuasar(PgCMD, PgSplit):
    # run, including the primary one, are left alone. returns the datasets locked here, to be
    # unlocked once the tar file is dispatched, or None if one of them is held by another
    # worker, in which case nothing new is left locked and the tar file must wait for a later run
+   # lock a dataset before working on it. a dataset held by another live process is the
+   # normal case once a second worker or the other backup action runs, and the library
+   # wording for it ("Locked by N/PBS: Cannot Relock") was logged as an ERROR, which counted
+   # in the error count and the error email although the dataset is just skipped. lock
+   # quietly and report the skip as information instead, naming the holder; a database
+   # error is still logged as an error by lock_dataset. returns what lock_dataset returns:
+   # 1 locked, -1 held by another process, 0 no dataset record or a database error
+   def lock_work_dataset(self, dsid, logact = None):
+      lstat = self.lock_dataset(dsid, 1, 0)
+      if lstat < 0:
+         pgrec = self.pgget('dataset', 'pid, lockhost', "dsid = '{}'".format(dsid), self.LOGERR)
+         holder = "{}/{}".format(pgrec['pid'], pgrec['lockhost']) if pgrec else 'another process'
+         self.pglog("{}: skipped, locked by {}".format(dsid, holder), self.LOGACT if logact is None else logact)
+      return lstat
+
    def lock_backup_datasets(self, qinfo, dsids):
       dslocks = []
       if not self.PGBACK['dolock']: return dslocks
       for dsid in dsids:
          if dsid in qinfo['dslocks']: continue
-         if self.lock_dataset(dsid, 1, self.LOGERR) < 1:
+         if self.lock_work_dataset(dsid, self.DTLACT) < 1:
             self.unlock_backup_datasets(qinfo, dslocks)
             return None
          qinfo['dslocks'].append(dsid)
@@ -753,7 +768,7 @@ class DsQuasar(PgCMD, PgSplit):
                'qsize' : 0, 'qcnt' : 0}
       for dsid in bfiles:
          if self.PGBACK['dolock']:
-            if self.lock_dataset(dsid, 1, self.LOGERR) < 1: continue
+            if self.lock_work_dataset(dsid) < 1: continue
             qinfo['dslocks'].append(dsid)
          for bid in bfiles[dsid]:
             self.check_batch_deadline()
