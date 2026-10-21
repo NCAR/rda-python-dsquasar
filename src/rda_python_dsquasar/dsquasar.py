@@ -1335,6 +1335,21 @@ class DsQuasar(PgCMD, PgSplit):
          s = 's' if mcnt > 1 else ''
          ftype = 'Saved' if fcate == 's' else 'Web'
          self.pglog("{}: {} of {} {} file{} missing from storage, not backed up".format(dsid, mcnt, fcnt, ftype, s), self.LOGACT)
+         if self.PGBACK['pstep']: self.drop_dscheck_files(mcnt)
+
+   # take files found missing from storage out of the dscheck file count. they are counted
+   # in at start, before any file is checked, but are never tarred and so never reach
+   # dcount: left in, they cap the done fraction below 100% (8,308 of 21,620 files once,
+   # 38%), understate the progress report and make the stall test add a worker the run
+   # does not need. with an upload action every file was counted twice, once to tar and
+   # once to upload, so twice as many come out
+   def drop_dscheck_files(self, mcnt):
+      fcnt = self.DSCHK['fcount'] if 'fcount' in self.DSCHK else 0
+      if not fcnt: return
+      if self.PGBACK['action']&self.BCKACT: mcnt *= 2
+      fcnt -= mcnt
+      if fcnt < self.PGBACK['dcnt']: fcnt = self.PGBACK['dcnt']
+      self.set_dscheck_fcount(fcnt, self.LGEREX)
 
    # initialize dataset backup dict structure
    @staticmethod
