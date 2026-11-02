@@ -504,6 +504,10 @@ class DsQuasar(PgCMD, PgSplit):
    # the done fraction dcount/fcount is used instead of a raw count because dcount counts
    # GDEX files for -A 3 but tar files for -A 2/-A 4. a job that is not locked, not started
    # yet, or whose process is gone is not stalled: init_dscheck already restarts a dead one.
+   # not started yet means status 'R': the dscheck daemon sets pid to the PBS job id and
+   # stttime to the submit time already at qsub, and rdaps lists a queued job as alive, so
+   # a job waiting in the PBS queue would otherwise read as one running with nothing done.
+   # init_dscheck sets status 'R' and resets stttime once the batch job really starts.
    # WALLTIME is the 24 hours asked for at submit time, since only the submitting process
    # runs this and set_walltime_deadline reads the granted walltime back in the batch job.
    # when the daemon caps it to a shorter queue limit the projection is optimistic, which
@@ -516,6 +520,7 @@ class DsQuasar(PgCMD, PgSplit):
    # only be added by a cron submit, every 4 hours: a 6 hour grace kept it out of the first
    # 6 to 10 hours of every attempt.
    def worker_progress_stalled(self, pgrec):
+      if pgrec['status'] != 'R': return False   # queued, held or finished: not running
       if not (pgrec['pid'] and pgrec['stttime']): return False
       if self.check_host_pid(pgrec['lockhost'], pgrec['pid']) <= 0: return False
       elapsed = tm() - pgrec['stttime']
